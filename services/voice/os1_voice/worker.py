@@ -27,12 +27,12 @@ from .onboarding import Dossier, OperatorAgent
 from .orchestrator_client import OrchestratorClient
 from .profile import ProfileStore
 from .router import TurnRouter
-from .samantha import SamanthaAgent
+from .mave import MaveAgent, SamanthaAgent
 from .turns import TurnEngine, WorkManager
 
 log = logging.getLogger("os1.worker")
 INITIATION_S = float(os.environ.get("OS1_INITIATION_S", "6"))
-AGENT_NAME = os.environ.get("OS1_AGENT_NAME", "os1-samantha")
+AGENT_NAME = os.environ.get("MAVE_AGENT_NAME", os.environ.get("OS1_AGENT_NAME", "mave"))
 # drama3: Samantha speaks through this worker (exact Drama 3 voice).
 # live3:  onboarding runs here, then the app hands off to a Fish Live 3 session (brain_server.py).
 VOICE_ENGINE = os.environ.get("OS1_VOICE_ENGINE", "drama3")
@@ -103,7 +103,7 @@ async def entrypoint(ctx: JobContext) -> None:
         turn_handling={"turn_detection": inference.TurnDetector()},
     )
 
-    def samantha(voice_key: str, *, first_meeting: bool) -> SamanthaAgent:
+    def mave(voice_key: str, *, first_meeting: bool) -> MaveAgent:
         voice = registry.get(voice_key) or registry[settings.default_voice]
         engine = TurnEngine(
             router=router,
@@ -116,7 +116,9 @@ async def entrypoint(ctx: JobContext) -> None:
             active_phase=Phase.ACTIVE,
         )
         engines.append(engine)
-        return SamanthaAgent(engine=engine, brain=brain, bus=bus, tts=make_tts(voice), voice_key=voice.key)
+        return MaveAgent(engine=engine, brain=brain, bus=bus, tts=make_tts(voice), voice_key=voice.key)
+
+    samantha = mave
 
     async def onboarding_complete(dossier: Dossier) -> None:
         await profiles.patch(
@@ -139,10 +141,10 @@ async def entrypoint(ctx: JobContext) -> None:
         if VOICE_ENGINE == "live3":
             await bus.set_handoff("live3")  # the app leaves this room and joins the Fish Live 3 session
         else:
-            session.update_agent(samantha(dossier.voice_key, first_meeting=True))
+            session.update_agent(mave(dossier.voice_key, first_meeting=True))
 
     if profile.get("onboarded"):
-        agent = samantha(profile.get("voice_key", settings.default_voice), first_meeting=False)
+        agent = mave(profile.get("voice_key", settings.default_voice), first_meeting=False)
     else:
         agent = OperatorAgent(
             jev=jev,

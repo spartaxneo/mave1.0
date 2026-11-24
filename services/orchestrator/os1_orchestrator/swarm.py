@@ -139,7 +139,7 @@ class SwarmEngine:
         return deleted
 
     def format_spoken_status(self, run_id_or_label: str) -> str:
-        """Format an authentic, natural Samantha spoken status report for a run."""
+        """Format an authentic, natural Mave spoken status report for a run."""
         run = self.find_run_by_label_or_id(run_id_or_label)
         if not run:
             # If nothing specific mentioned, summarize active work

@@ -115,7 +115,7 @@ class VisionEngine:
         detected_text = [active_app]
         if active_window:
             detected_text.append(active_window)
-        detected_text.extend(["OS1", "Samantha", "Workspace"])
+        detected_text.extend(["MAVE", "Workspace"])
 
         objects = ["Window", "Menu Bar", "Display", "Desktop Workspace"]
 

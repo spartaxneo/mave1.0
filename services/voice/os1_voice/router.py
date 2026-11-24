@@ -4,7 +4,7 @@ This replaces the "5 narrow tools" decision a fast LLM would otherwise make with
 tool call. One speculative fan-out asks everything the worker might need:
 
 - kind:            chat | work | control | chip
-- addressed:       is this said to Samantha at all? (always-on mic)
+- addressed:       is this said to Mave at all? (always-on mic)
 - chip:            which on-screen say-chip, if any
 - control_target:  which running task
 - control_action:  status | change | stop | approve | deny
@@ -152,9 +152,9 @@ class TurnRouter:
             kinds["chip"] = {"what": "Says, or clearly refers to, one of `on_screen_phrases`"}
 
         qs: dict[str, object] = {
-            "kind": Choice(instructions="What should Samantha do with `latest`?", criteria=kinds),
+            "kind": Choice(instructions="What should Mave do with `latest`?", criteria=kinds),
             "addressed": Noul(
-                instructions="Is `latest` said to Samantha, the assistant?",
+                instructions="Is `latest` said to Mave, the assistant?",
                 criteria=NoulCriteria(
                     true="Spoken to her, including short replies continuing `recent_conversation`",
                     false="Clearly said to another person in the room, to a pet, on a phone call, "

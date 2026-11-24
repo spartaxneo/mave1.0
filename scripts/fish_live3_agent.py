@@ -1,4 +1,4 @@
-"""Create or update Samantha's Fish Live 3 agent and publish it.
+"""Create or update Mave's Fish Live 3 agent and publish it.
 
     python3 scripts/fish_live3_agent.py https://<brain-public-url>
 
@@ -41,15 +41,15 @@ def main() -> None:
         raise SystemExit("usage: fish_live3_agent.py https://<brain-public-url>  (Fish requires public HTTPS)")
     agent_id = env("FISH_AGENT_ID")
     if not agent_id:
-        created = call("POST", "/v1/agent/agents", {"name": "os1-samantha-live3"})
+        created = call("POST", "/v1/agent/agents", {"name": "mave-live3"})
         agent_id = created.get("id") or created.get("agent_id") or created.get("_id")
         print("created agent", agent_id)
     config = {
         "voice": {"engine": "live3", "voice_id": env("FISH_VOICE_1_ID"), "speaking_language": "en"},
-        "llm": {"custom": {"base_url": f"{brain_url}/v1", "model": "samantha", "api_key": env("OS1_BRAIN_TOKEN")}},
+        "llm": {"custom": {"base_url": f"{brain_url}/v1", "model": "mave", "api_key": env("OS1_BRAIN_TOKEN")}},
         # The brain supplies persona and routing; Fish's own prompt stays minimal.
         "prompt": {
-            "system_prompt": "You are Samantha.",
+            "system_prompt": "You are Mave.",
             "first_message_mode": "prompt",
             "first_message_prompt": "Open the conversation.",
         },

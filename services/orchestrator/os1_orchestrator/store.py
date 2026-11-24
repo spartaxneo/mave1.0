@@ -264,7 +264,7 @@ SEED_RUNS: list[dict[str, Any]] = [
             "Queried coastal weather station for San Francisco and Marin.",
             "Temperature: 64°F with sunny skies.",
             "Tide timetable retrieved: High 5.2 ft at 11:20 AM, Low 1.1 ft at 5:45 PM.",
-            "Report synthesized for Samantha.",
+            "Report synthesized for Mave.",
         ],
         "created_at": 1732309800.0,
         "updated_at": 1732310100.0,

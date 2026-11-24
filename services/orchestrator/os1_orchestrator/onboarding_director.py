@@ -249,7 +249,7 @@ class OnboardingDirector:
 
             # User provided a genuine answer (either tapped chip or descriptive response)
             mother_note = text
-            reply = "That's plenty. Thank you. One moment. Yours is waking up."
+            reply = "That's plenty. Thank you. One moment. MAVE is waking up."
 
             memory_entry = {
                 "category": "people",

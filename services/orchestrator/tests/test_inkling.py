@@ -6,7 +6,7 @@ from os1_orchestrator.inkling import InklingRouter, RouteCategory
 def test_inkling_pill_routing():
     router = InklingRouter()
 
-    r1 = router.route("Hey Samantha, can you read my email?")
+    r1 = router.route("Hey Mave, can you read my email?")
     assert r1.category == RouteCategory.PILL
     assert r1.action == "read_email"
     assert r1.latency_ms < 10.0

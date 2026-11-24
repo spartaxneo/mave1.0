@@ -1,4 +1,4 @@
-"""Samantha's conversational brain: one fast Claude call per spoken turn.
+"""Mave's conversational brain: one fast Claude call per spoken turn.
 
 Shared by both voice engines:
 - drama3: the LiveKit worker streams these words into Fish Drama 3 TTS.
@@ -67,7 +67,7 @@ class BrainSettings:
 
 
 def persona(engine: Engine) -> str:
-    soul = SOUL_PATH.read_text() if SOUL_PATH.exists() else "You are Samantha."
+    soul = SOUL_PATH.read_text() if SOUL_PATH.exists() else "You are Mave."
     return f"{soul.strip()}\n\n{VOICE_RULES}\n- {CUES_DRAMA3 if engine == 'drama3' else CUES_LIVE3}"
 
 

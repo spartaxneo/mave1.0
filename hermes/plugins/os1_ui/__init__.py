@@ -114,7 +114,7 @@ def register(ctx: Any) -> None:
     ctx.register_tool(
         name="os1_log_activity",
         toolset="os1",
-        description="Record an entry in Samantha's 'While you were away' log on Her Computer.",
+        description="Record an entry in Mave's 'While you were away' log on Her Computer.",
         schema={
             "name": "os1_log_activity",
             "description": "Log a completed background or overnight task on Her Computer.",

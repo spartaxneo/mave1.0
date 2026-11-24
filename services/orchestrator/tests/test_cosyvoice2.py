@@ -1,4 +1,4 @@
-"""Tests for CosyVoice 2 engine, Samantha default voice, and inline acting tags."""
+"""Tests for CosyVoice 2 engine, Mave default voice, and inline acting tags."""
 
 import io
 import wave

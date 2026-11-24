@@ -194,11 +194,11 @@ class JevDirector:
                     "home": "Ambient desktop overview of running things",
                     "inbox_cascade": "Reading, triaging, archiving, or cleaning up emails",
                     "your_computer": "Watching or stopping actions on the user's own Mac",
-                    "her_computer": "Looking at Samantha's cloud computer screen or what she did while away",
+                    "her_computer": "Looking at Mave's cloud computer screen or what she did while away",
                     "swarm": "Viewing multiple background tasks running in parallel",
                     "made_just_now": "Showing a generated comparison, draft preview, timeline, or choice card",
                     "connectors": "Viewing or changing connected apps and permissions",
-                    "voice_picker": "Choosing or tuning Samantha's voice",
+                    "voice_picker": "Choosing or tuning Mave's voice",
                     "memory": "Viewing or forgetting saved memories",
                 },
             ),
@@ -322,7 +322,7 @@ class JevDirector:
                         state={"event": event, "user_mid_conversation": user_busy},
                         questions={
                             "urgency": Choice(
-                                instructions="How urgently should Samantha surface this external event?",
+                                instructions="How urgently should Mave surface this external event?",
                                 criteria={
                                     "low": "Newsletter, receipt, promo, routine notification — silently log/archive",
                                     "medium": "Schedule change, non-urgent reply — mention at next natural greeting",

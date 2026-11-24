@@ -1,4 +1,4 @@
-"""live3 engine: Samantha's brain as an OpenAI-compatible endpoint for Fish Live 3.
+"""live3 engine: Mave's brain as an OpenAI-compatible endpoint for Fish Live 3.
 
 Fish Live 3 owns listening, turn-taking, backchannels and the voice; on every reply it
 calls our `POST /v1/chat/completions` (verified 2026-11-22: greeting + every user turn).
@@ -141,7 +141,7 @@ def _sse(chunk_id: str, delta: dict[str, Any], finish: str | None = None) -> byt
         "id": chunk_id,
         "object": "chat.completion.chunk",
         "created": int(time.time()),
-        "model": "samantha",
+        "model": "mave",
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
     }
     return f"data: {json.dumps(payload)}\n\n".encode()
@@ -189,8 +189,10 @@ async def chat_completions(request: Request, authorization: str = Header(default
         if not s.greeted:
             s.greeted = True
             if s.first_meeting:
+                script = load_script()
+                first_words = (script.get("mave") or script.get("samantha", {}))["first_words"]
                 return StreamingResponse(
-                    _reply(_fixed(load_script()["samantha"]["first_words"])), media_type="text/event-stream"
+                    _reply(_fixed(first_words)), media_type="text/event-stream"
                 )
             note = "The call just connected. Greet them as yourself, warmly and briefly, like picking up where you left off."
         else:
@@ -208,7 +210,7 @@ async def chat_completions(request: Request, authorization: str = Header(default
             said += chunk
             yield chunk
         s.engine.heard_her(said)
-        if s.engine.first_meeting and "Samantha" in said:
+        if s.engine.first_meeting and ("Mave" in said or "Samantha" in said):
             await s.ui.set_chips(load_script()["chips"]["naming"])
 
     return sse(_reply(words()))

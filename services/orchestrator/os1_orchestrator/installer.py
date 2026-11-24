@@ -6,7 +6,7 @@ Features:
 3. Storage Audit (Required vs Available space) & Storage Exhaustion Reporting
 4. OS-Specific Solution Action (Auto-clean dev caches, logs, temp folders)
 5. Autonomous Self-Installation of Option 2 Local Neural Stack:
-   - Piper Neural Voice Engine (Samantha warm female voice + Operator male voice)
+   - Piper Neural Voice Engine (Mave warm female voice + Operator male voice)
    - Ollama & Qwen 2.5 Local Neural Brain
 6. Live Real-Time Progress, Network & Storage Problem Reporting to User
 """
@@ -263,7 +263,7 @@ class Os1Installer:
             ),
             ModelPackage(
                 key="piper_neural_tts",
-                name="Piper Neural Voice Synthesizer (Samantha + Operator)",
+                name="Piper Neural Voice Synthesizer (Mave + Operator)",
                 size_mb=140,
                 category="voice",
                 is_installed=piper_ready,
@@ -506,7 +506,7 @@ class Os1Installer:
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
         # ---------------------------------------------------------------------
-        # 1. VOICE: Piper TTS, Samantha & Ryan ONNX weights, Whisper STT, VAD
+        # 1. VOICE: Piper TTS, Mave & Ryan ONNX weights, Whisper STT, VAD
         # ---------------------------------------------------------------------
         piper_ready = self.is_piper_ready()
         piper_bin = self.get_piper_binary()
@@ -538,16 +538,16 @@ class Os1Installer:
                     err_msg = f"Network error downloading Piper TTS binary: {err}"
                     return _update("voice", 8, err_msg, component="voice", component_label="Voice", err_type="network", err_msg=err_msg)
 
-            # Download Samantha & Operator Voice Models if needed
+            # Download Mave & Operator Voice Models if needed
             amy_onnx = self.models_dir / "en_US-amy-medium.onnx"
             amy_json = self.models_dir / "en_US-amy-medium.onnx.json"
             if not amy_onnx.exists():
-                _update("voice", 12, "Installing Voice: Downloading Samantha neural model...", component="voice", component_label="Voice")
+                _update("voice", 12, "Installing Voice: Downloading Mave neural model...", component="voice", component_label="Voice")
                 try:
                     await self._download_file(f"{HF_VOICES_BASE}/amy/medium/en_US-amy-medium.onnx", amy_onnx)
                     await self._download_file(f"{HF_VOICES_BASE}/amy/medium/en_US-amy-medium.onnx.json", amy_json)
                 except Exception as err:
-                    err_msg = f"Network error downloading Samantha voice model: {err}"
+                    err_msg = f"Network error downloading Mave voice model: {err}"
                     return _update("voice", 12, err_msg, component="voice", component_label="Voice", err_type="network", err_msg=err_msg)
 
             ryan_onnx = self.models_dir / "en_US-ryan-medium.onnx"

@@ -23,8 +23,10 @@ from typing import Any
 
 log = logging.getLogger("os1.cosyvoice2")
 
-DEFAULT_REF_PATH = Path(__file__).resolve().parents[1] / "assets" / "samantha_ref.wav"
-DEFAULT_PROMPT_TEXT = "I'm Samantha. It's really good to meet you. I'm right here with you."
+DEFAULT_REF_PATH = Path(__file__).resolve().parents[1] / "assets" / "mave_ref.wav"
+if not DEFAULT_REF_PATH.exists():
+    DEFAULT_REF_PATH = Path(__file__).resolve().parents[1] / "assets" / "samantha_ref.wav"
+DEFAULT_PROMPT_TEXT = "I'm Mave. It's really good to meet you. I'm right here with you."
 
 
 @dataclass
@@ -44,7 +46,7 @@ class ParsedSpeechScript:
 
 @dataclass
 class CosyVoiceConfig:
-    voice_name: str = "samantha"
+    voice_name: str = "mave"
     reference_audio_path: str = str(DEFAULT_REF_PATH)
     reference_prompt_text: str = DEFAULT_PROMPT_TEXT
     sample_rate: int = 24000
@@ -111,7 +113,7 @@ class CosyVoice2Engine:
 
         buf = io.BytesIO()
 
-        # Vocal parameters (warm Samantha timbre: lower resonance, slight breathiness)
+        # Vocal parameters (warm Mave timbre: lower resonance, slight breathiness)
         breathiness = 0.15 if script.has_whisper else 0.05
         f0 = 210.0 if not script.has_whisper else 180.0
 

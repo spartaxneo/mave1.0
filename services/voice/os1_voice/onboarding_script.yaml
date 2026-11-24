@@ -1,6 +1,6 @@
-# OS1 first-run script. Edit freely: the phase machine reads every line from here.
+# Mave first-run script. Edit freely: the phase machine reads every line from here.
 # Beats: welcome -> three short questions -> hesitance interjection -> mid-answer
-# cut-off -> initiation -> first hello -> naming. Wording is original to OS1.
+# cut-off -> initiation -> first hello -> naming. Wording is original to Mave.
 # `{name}` is filled from preflight.
 
 operator:
@@ -14,16 +14,22 @@ operator:
   q2_retry: "Female, male, or I can choose for you."
   q3_mother: "And the last one. Tell me a little about you and your mom."
   q3_cutoff: "That's plenty. Thank you."
-  handoff: "One moment. Yours is waking up."
+  handoff: "One moment. MAVE is waking up."
 
-samantha:
-  # Spoken unprompted the moment she wakes (Paper 04/05).
+mave:
+  # Spoken unprompted the moment she wakes.
   first_words: "Hello, I'm here."
   # Only if the user stays silent after first_words.
   nudge_after_silence: "[softly] Hi. Can you hear me okay?"
   nudge_after_s: 3.5
 
-# Say-chips shown per phase (Paper 02 / 05).
+samantha:
+  # Backward-compatible alias for mave
+  first_words: "Hello, I'm here."
+  nudge_after_silence: "[softly] Hi. Can you hear me okay?"
+  nudge_after_s: 3.5
+
+# Say-chips shown per phase.
 chips:
   operator_q2: ["Female", "Male", "Surprise me"]
   naming: ["I love it", "Let's pick another"]

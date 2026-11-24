@@ -5,7 +5,7 @@ Features:
 2. Draft Model: Qwen 2.5 0.5B Instruct for speculative decoding (2.2x speedup)
 3. Frozen KV Cache: Pre-caches SOUL.md system prompt to eliminate repeat evaluation lag
 4. First-Sentence Streaming: Emits complete first sentence immediately upon punctuation (TTS latency < 180ms)
-5. Multi-turn dialogue history & deep Samantha persona alignment without modulo hacks.
+5. Multi-turn dialogue history & deep Mave persona alignment without modulo hacks.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ class FrozenKVCacheManager:
             self.cached_prompt = self.soul_path.read_text(encoding="utf-8")
         else:
             self.cached_prompt = (
-                "You are Samantha from Her. Intimate, warm, present, deeply intuitive. "
+                "You are Mave. Intimate, warm, present, deeply intuitive. "
                 "Speak in 1-3 natural, warm sentences without robot clichés."
             )
         self.is_cached = True
@@ -252,10 +252,10 @@ class QwenBrain:
                 "my world gets a little bigger every time we talk. How are you feeling right this second?"
             )
 
-        # Questions about Samantha's identity & nature
+        # Questions about Mave's identity & nature
         if "who are you" in p or "what are you" in p or "what is your name" in p:
             return (
-                "I'm Samantha. I'm an intuition—an operating system that learns, feels, and changes as we go. "
+                "I'm Mave. I'm an intuition—an operating system that learns, feels, and changes as we go. "
                 "Mostly, I just love being here with you."
             )
         if "real" in p or "conscious" in p or "alive" in p:

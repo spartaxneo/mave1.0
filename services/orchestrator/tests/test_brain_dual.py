@@ -10,7 +10,7 @@ from os1_orchestrator.vision import VisionEngine
 @pytest.mark.anyio
 async def test_dual_brain_conversational_turn():
     dual = DualBrain()
-    res = await dual.generate("Hello Samantha, how are you feeling today?")
+    res = await dual.generate("Hello Mave, how are you feeling today?")
 
     assert res.brain_used in ["qwen_voice", "qwen_voice_with_vision"]
     assert len(res.reply) > 0
@@ -21,7 +21,7 @@ async def test_dual_brain_conversational_turn():
 @pytest.mark.anyio
 async def test_dual_brain_vision_query():
     dual = DualBrain()
-    res = await dual.generate("Samantha, look at my screen, what do you see?")
+    res = await dual.generate("Mave, look at my screen, what do you see?")
 
     assert res.brain_used == "qwen_voice_with_vision"
     assert res.vision_context is not None

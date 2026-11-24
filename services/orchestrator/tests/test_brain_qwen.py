@@ -14,7 +14,7 @@ def test_frozen_kv_cache_initialization():
     assert kv.is_cached is True
     prompt = kv.get_system_prompt()
     assert len(prompt) > 0
-    assert "Samantha" in prompt or "Her" in prompt
+    assert "Mave" in prompt or "Samantha" in prompt or "Her" in prompt
 
 
 def test_speculative_decoder_simulation():

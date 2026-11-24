@@ -951,6 +951,8 @@ export function useOs1(config: Os1Config) {
         micStream = stream;
 
         let pcmChunks: Float32Array[] = [];
+        const preRollRingBuffer: Float32Array[] = [];
+        const MAX_PREROLL = 5; // ~230ms pre-roll at 44.1/48kHz preserves initial word consonants ("F", "M", "S", "L")
 
         // 1. AudioContext & Analyser for Presence Ring Visuals + Energy VAD + Direct PCM
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -967,13 +969,23 @@ export function useOs1(config: Os1Config) {
             scriptNode = audioCtx.createScriptProcessor(2048, 1, 1);
             scriptNode.onaudioprocess = (e) => {
               const now = Date.now();
+              const channel = e.inputBuffer.getChannelData(0);
+              const copy = new Float32Array(channel);
               if (isSpeaking && !isAgentSpeakingGlobally && now - lastAgentSpeechEndTime > 150) {
-                const channel = e.inputBuffer.getChannelData(0);
-                pcmChunks.push(new Float32Array(channel));
+                pcmChunks.push(copy);
+              } else if (!isAgentSpeakingGlobally) {
+                preRollRingBuffer.push(copy);
+                if (preRollRingBuffer.length > MAX_PREROLL) {
+                  preRollRingBuffer.shift();
+                }
               }
             };
             source.connect(scriptNode);
-            scriptNode.connect(audioCtx.destination);
+            // Route through a silent gain node so processor remains active without echoing mic to speakers
+            const muteGain = audioCtx.createGain();
+            muteGain.gain.value = 0;
+            scriptNode.connect(muteGain);
+            muteGain.connect(audioCtx.destination);
           } catch {}
 
           const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -1068,7 +1080,8 @@ export function useOs1(config: Os1Config) {
               if (avg >= 0.8) {
                 if (!isSpeaking) {
                   isSpeaking = true;
-                  pcmChunks = [];
+                  // Prepend pre-roll ring buffer so leading consonants are intact
+                  pcmChunks = [...preRollRingBuffer];
                   chunks = [];
                 }
                 lastSpeechTime = now;

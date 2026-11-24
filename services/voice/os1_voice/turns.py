@@ -26,7 +26,7 @@ from .router import Route, RunRef, TurnRouter
 
 log = logging.getLogger("os1.turns")
 
-ACTIVE_CHIPS = ["Show me", "Hold on a sec", "Goodnight, Samantha"]
+ACTIVE_CHIPS = ["Show me", "Hold on a sec", "Goodnight, Mave"]
 WORK_CHIP = "How's it going?"
 
 ROUTE_NOTES = {
@@ -221,7 +221,7 @@ class TurnEngine:
         return ACTIVE_CHIPS + ([WORK_CHIP] if self.work.refs() else [])
 
     def heard_her(self, said: str) -> None:
-        self.recent.append(f"samantha: {said}")
+        self.recent.append(f"mave: {said}")
 
     async def decide(self, text: str) -> TurnResult:
         if not text:
@@ -290,7 +290,7 @@ class TurnEngine:
         match chip:
             case "Hold on a sec":
                 return TurnResult(None, interrupt=True)
-            case "Goodnight, Samantha":
+            case "Goodnight, Mave" | "Goodnight, Samantha":
                 if self._asleep is not None:
                     await self._ui.set_phase(self._asleep)
                 return TurnResult("Say a warm, brief goodnight.")

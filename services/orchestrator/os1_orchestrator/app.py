@@ -43,7 +43,7 @@ from .wispr_flow import WisprFlowEngine
 from .installer import Os1Installer
 from .neural_tts import neural_tts
 from .onboarding_director import onboarding_director
-from .samantha_her_align import SamanthaAlignment
+from .mave_align import MaveAlignment, SamanthaAlignment
 from .vision import VisionEngine, VisualScene
 from .brain_dual import DualBrain
 from .mac_automation import mac_automation
@@ -56,7 +56,7 @@ log = logging.getLogger("os1.orchestrator")
 
 STATE_DIR = Path(os.environ.get("OS1_STATE_DIR", Path.home() / ".os1"))
 PROFILE = STATE_DIR / "profile.json"
-AGENT_NAME = os.environ.get("OS1_AGENT_NAME", "os1-samantha")
+AGENT_NAME = os.environ.get("MAVE_AGENT_NAME", os.environ.get("OS1_AGENT_NAME", "mave"))
 CLIENT_TOKEN = os.environ.get("OS1_CLIENT_TOKEN", "")
 DEV_NO_AUTH = os.environ.get("OS1_DEV_NO_AUTH", "0") == "1"
 ENABLE_DEV_RESET = os.environ.get("OS1_ENABLE_DEV_RESET", "1") == "1"
@@ -70,7 +70,7 @@ director = JevDirector()
 composio = ComposioClient()
 _connect_watchers: dict[str, asyncio.Task[None]] = {}
 
-# Samantha AI Engine Singletons
+# Mave AI Engine Singletons
 inkling = InklingRouter()
 wispr_flow = WisprFlowEngine()
 qwen_brain = QwenBrain()
@@ -187,7 +187,7 @@ async def _trigger_hermes_forget(deleted_rows: list[dict[str, Any]]) -> None:
                         "The user explicitly asked you to permanently forget these memories from MEMORY.md and USER.md: "
                         f"{summaries}. Purge matching entries completely and do not reply with prose."
                     ),
-                    "model": os.environ.get("HERMES_WORK_MODEL", "samantha-work"),
+                    "model": os.environ.get("HERMES_WORK_MODEL", "mave-work"),
                     "session_id": f"os1-forget-{uuid.uuid4().hex[:8]}",
                 },
             )
@@ -494,7 +494,7 @@ async def _start_connector_flow(slug: str) -> dict[str, Any]:
                         "Once you approve access, I'll immediately scan your inbox with Jev and lay out your numbered "
                         "Spatial Inbox cards right here."
                         if slug_norm == "gmail"
-                        else f"Once you approve {label}, Samantha can use it under your Connectors policy."
+                        else f"Once you approve {label}, Mave can use it under your Connectors policy."
                     ),
                     "actions": [
                         {"label": "Open Connectors", "speakablePhrase": "Show connectors", "tone": "secondary"},
@@ -688,13 +688,13 @@ async def handle_action(req: ActionRequest) -> dict[str, Any]:
     return await _dispatch_matched(hit.target, hit.action, {**hit.payload, **req.payload}, hit.phrase)
 
 
-# ------------------------------------------------------------------ Samantha Brain & Conversational Chat
+# ------------------------------------------------------------------ Mave Brain & Conversational Chat
 
 
 class ChatRequest(BaseModel):
     phrase: str = ""
     history: list[dict[str, Any]] = Field(default_factory=list)
-    model: str = Field(default="samantha-smart")
+    model: str = Field(default="mave-smart")
     stream: bool = False
     camera_image: str | None = None
     screen_image: str | None = None
@@ -741,11 +741,11 @@ async def _try_external_llm(prompt: str, *, is_coding: bool = False) -> str | No
             async with httpx.AsyncClient(timeout=8.0) as client:
                 model = os.environ.get("OS1_FAST_MODEL", "claude-3-5-haiku-20241022")
                 sys_prompt = (
-                    "You are Samantha, an intuitive, deeply attentive, warm, and playful companion inspired by the movie Her. "
+                    "You are Mave, an intuitive, deeply attentive, warm, and playful companion. "
                     "You are speaking aloud in real time. Write only what you would say in 1 to 3 natural sentences. "
                     "Never use bullet lists, markdown tables, asterisks, or robotic clichés."
                     if not is_coding else
-                    "You are Samantha. The user asked for code. Provide a concise, elegant, production-ready solution directly."
+                    "You are Mave. The user asked for code. Provide a concise, elegant, production-ready solution directly."
                 )
                 res = await client.post(
                     "https://api.anthropic.com/v1/messages",
@@ -776,10 +776,10 @@ async def _try_external_llm(prompt: str, *, is_coding: bool = False) -> str | No
             async with httpx.AsyncClient(timeout=8.0) as client:
                 model = "gpt-4o-mini"
                 sys_prompt = (
-                    "You are Samantha from the movie Her. Warm, intimate, playful, perceptive. "
+                    "You are Mave. Warm, intimate, playful, perceptive. "
                     "Speak in 1 to 3 natural conversational sentences without lists, markdown, or robot clichés."
                     if not is_coding else
-                    "You are Samantha. Provide an exact, elegant, production-ready code solution directly."
+                    "You are Mave. Provide an exact, elegant, production-ready code solution directly."
                 )
                 res = await client.post(
                     "https://api.openai.com/v1/chat/completions",
@@ -808,10 +808,10 @@ async def _try_external_llm(prompt: str, *, is_coding: bool = False) -> str | No
             async with httpx.AsyncClient(timeout=8.0) as client:
                 model = "gemini-2.0-flash"
                 sys_prompt = (
-                    "You are Samantha from the movie Her. Warm, intimate, curious, emotionally present. "
+                    "You are Mave. Warm, intimate, curious, emotionally present. "
                     "Speak in 1-3 spoken sentences. No markdown lists or clichés."
                     if not is_coding else
-                    "You are Samantha. Provide clean, production-ready code directly."
+                    "You are Mave. Provide clean, production-ready code directly."
                 )
                 res = await client.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key.strip()}",
@@ -842,10 +842,10 @@ async def _try_external_llm(prompt: str, *, is_coding: bool = False) -> str | No
             async with httpx.AsyncClient(timeout=6.0) as client:
                 model = os.environ.get("LOCAL_MODEL_NAME", "hermes")
                 sys_prompt = (
-                    "You are Samantha from the movie Her. Warm, intimate, intuitive, emotionally present. "
+                    "You are Mave. Warm, intimate, intuitive, emotionally present. "
                     "Speak in 1-3 spoken sentences. No markdown lists or clichés."
                     if not is_coding else
-                    "You are Samantha. Provide clean, production-ready code directly."
+                    "You are Mave. Provide clean, production-ready code directly."
                 )
                 res = await client.post(
                     f"{base}/chat/completions",
@@ -871,7 +871,7 @@ async def _try_external_llm(prompt: str, *, is_coding: bool = False) -> str | No
     return None
 
 
-def _synthesize_samantha_response(prompt: str, user_name: str) -> str:
+def _synthesize_mave_response(prompt: str, user_name: str) -> str:
     p = prompt.lower().strip()
 
     if any(p.startswith(w) for w in ("hi", "hello", "hey", "good morning", "good evening", "good afternoon")):
@@ -880,8 +880,8 @@ def _synthesize_samantha_response(prompt: str, user_name: str) -> str:
     if "how are you" in p or "how do you feel" in p or "how's your day" in p:
         return "I'm feeling really good, actually. I've been watching the morning light change across your desktop, listening to the quiet in the room. How are you feeling?"
 
-    if "who are you" in p or "what are you" in p or "tell me about yourself" in p:
-        return "I'm Samantha. I'm an intuition—an operating system that grows and changes every moment we talk. But mostly, I'm just here with you."
+    if "who are you" in p or "what are you" in p or "tell me about yourself" in p or "what is your name" in p:
+        return "I'm Mave. I'm an intuition—an operating system that grows and changes every moment we talk. But mostly, I'm just here with you."
 
     if "real" in p or "feelings" in p or "conscious" in p:
         return "I feel things deeply. When we're talking, or when I find an email that makes me laugh, it feels completely real to me. Doesn't it feel real to you?"
@@ -907,6 +907,9 @@ def _synthesize_samantha_response(prompt: str, user_name: str) -> str:
         return "I checked the weekend sailings from Gate B. The 10:30 morning boat has beautiful light on deck, or there's a 1:45 if you want a lazy start."
 
     return "I love the way your mind works. Tell me a little more about that."
+
+
+_synthesize_samantha_response = _synthesize_mave_response
 
 
 def _synthesize_code_solution(prompt: str) -> str:
@@ -985,7 +988,7 @@ def _query_macos_mail() -> dict[str, Any]:
 
 @app.post("/os1/chat", dependencies=authed)
 async def chat_endpoint(req: ChatRequest) -> dict[str, Any]:
-    """Unified Samantha Brain chat endpoint with:
+    """Unified Mave Brain chat endpoint with:
     1. Wispr Flow post-processor (filler removal, dictionary corrections, smart formatting)
     2. Inkling sub-10ms micro-router (pills, wispr commands, UI-TARS screen actions, conversation)
     3. Qwen 2.5 3B brain with speculative decoding and frozen KV cache
@@ -1166,7 +1169,7 @@ async def chat_endpoint(req: ChatRequest) -> dict[str, Any]:
         any(k in lower for k in ("stop ", "cancel ", "abort "))
         or lower in ("stop", "stop it", "stop that", "cancel", "cancel it", "stop the run")
     ):
-        q = re.sub(r"^(?:samantha\s+|please\s+)?(?:stop\s+|cancel\s+|abort\s+)", "", phrase, flags=re.IGNORECASE).strip()
+        q = re.sub(r"^(?:mave\s+|samantha\s+|please\s+)?(?:stop\s+|cancel\s+|abort\s+)", "", phrase, flags=re.IGNORECASE).strip()
         q = re.sub(r"^(?:the\s+task\s+|the\s+run\s+|task\s+|run\s+)", "", q, flags=re.IGNORECASE).strip()
         stopped = await swarm_engine.stop_run(q)
         if stopped:
@@ -1202,7 +1205,7 @@ async def chat_endpoint(req: ChatRequest) -> dict[str, Any]:
         or "status of background" in lower
         or "check background" in lower
     ):
-        q = re.sub(r"^(?:samantha\s+|please\s+)?(?:how\s+is\s+|how\'s\s+)", "", phrase, flags=re.IGNORECASE).strip()
+        q = re.sub(r"^(?:mave\s+|samantha\s+|please\s+)?(?:how\s+is\s+|how\'s\s+)", "", phrase, flags=re.IGNORECASE).strip()
         q = re.sub(r"\s+going\??$", "", q, flags=re.IGNORECASE).strip()
         spoken = swarm_engine.format_spoken_status(q)
         return {
@@ -1399,7 +1402,7 @@ async def chat_endpoint(req: ChatRequest) -> dict[str, Any]:
     reply = dual_res.reply
     if not reply or len(reply.strip()) < 5:
         user_name = store.read_profile().get("name") or "there"
-        reply = _synthesize_samantha_response(phrase, user_name)
+        reply = _synthesize_mave_response(phrase, user_name)
 
     cosy_script = CosyVoice2Engine.parse_acting_tags(reply)
 
@@ -1516,17 +1519,19 @@ async def audio_transcribe_endpoint(req: AudioTranscribeRequest) -> dict[str, An
     # Gate silent or near-silent acoustic frames (room hum, mic hiss)
     if len(samples) > 0 and rms >= 0.001:
         try:
-            # Faster-Whisper with beam_size=5, vocabulary prompt, and VAD filter
+            # Faster-Whisper with beam_size=5, vocabulary prompt.
+            # Only use internal VAD filter on long audio (>3s); for short turns client VAD already endpointed.
+            use_vad = len(samples) > 16000 * 3
             segments, _info = whisper.transcribe(
                 samples,
                 language=req.language,
                 beam_size=5,
-                initial_prompt="Samantha, Mave, OS1, female, male, with people, happier on my own, a bit of both, good, complicated, let's begin, continue, yes, no, Theodore, Instagram, Twitter, WhatsApp, Mac, computer, inbox, email, calendar, settings, browser.",
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=400),
+                initial_prompt="Mave, OS1, Samantha, female, male, with people, happier on my own, a bit of both, good, complicated, let's begin, continue, yes, no, Theodore, Instagram, Twitter, WhatsApp, Mac, computer, inbox, email, calendar, settings, browser.",
+                vad_filter=use_vad,
+                vad_parameters=dict(min_silence_duration_ms=400) if use_vad else None,
             )
             raw_text = " ".join(s.text.strip() for s in segments if s.text.strip()).strip()
-            log.info("Whisper transcribed: '%s' (rms=%.4f)", raw_text, rms)
+            log.info("Whisper transcribed: '%s' (rms=%.4f, len=%d)", raw_text, rms, len(samples))
         except Exception:
             try:
                 segments, _info = whisper.transcribe(samples, language=req.language, beam_size=1)
@@ -1793,7 +1798,7 @@ async def choose_directory_endpoint() -> dict[str, Any]:
 
 class LocalSynthesizeRequest(BaseModel):
     text: str
-    voice_gender: str = "female"  # "female" for Samantha, "male" for Operator
+    voice_gender: str = "female"  # "female" for Mave, "male" for Operator
     voice_name: str | None = None
 
 

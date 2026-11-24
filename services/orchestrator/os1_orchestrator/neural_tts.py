@@ -2,7 +2,7 @@
 
 Features:
 - Primary: State-of-the-art conversational neural speech (Microsoft Edge Neural:
-  en-US-GuyNeural / en-US-BrianNeural for male operator; en-US-AvaNeural / en-US-JennyNeural for Samantha).
+  en-US-GuyNeural / en-US-BrianNeural for male operator; en-US-AvaNeural / en-US-JennyNeural for Mave).
 - Natural conversational pacing, breath pauses, and pronunciation normalization (e.g. 'OS1' -> 'OS 1').
 - Tier-1 Memory and disk persistent cache in ~/.os1/cache/tts/ for instant sub-millisecond playback.
 - Prewarming of all onboarding operator phrases for 0ms lag during setup.
@@ -232,8 +232,10 @@ class NeuralTtsEngine:
             ("And the last one. Tell me a little about you and your mom.", "male"),
             ("Tell me a little about how things are between you two.", "male"),
             ("Just getting a sense of how you relate to the people in your life. Tell me a little about her.", "male"),
-            ("That's plenty. Thank you. One moment. Yours is waking up.", "male"),
-            ("One moment. Yours is waking up.", "male"),
+            ("That's plenty. Thank you. One moment. MAVE is waking up.", "male"),
+            ("That's plenty. Thank you. One moment. Mave is waking up.", "male"),
+            ("One moment. MAVE is waking up.", "male"),
+            ("One moment. Mave is waking up.", "male"),
             # MAVE initial awakening
             ("Hello, I'm here.", "female"),
             ("MAVE is who I am. Shall we continue?", "female"),

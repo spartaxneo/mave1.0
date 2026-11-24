@@ -32,8 +32,8 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
     const w = size;
-    // Generous vertical headroom (0.62) gives the ribbon full space to animate and breathe without any clipping
-    const h = size * 0.62;
+    // Expansive vertical headroom (0.85) gives the living ribbon full space to animate, undulate, and flow without any clipping
+    const h = size * 0.85;
     el.width = w * dpr;
     el.height = h * dpr;
     ctx.scale(dpr, dpr);
@@ -86,10 +86,11 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
       if (ribbon > 0.02) {
         // Ribbon: three-lobe living ribbon with pointed ends
         const span = w * (s === "thinking" ? 0.6 : s === "listening" ? 0.78 : 0.84);
-        // Calibrated amplitude: at maximum speech level, wave peaks stay safely within 0.36 * h,
-        // leaving guaranteed generous headroom at top and bottom so the ribbon never clips.
-        const amp = h * (s === "thinking" ? 0.12 : s === "listening" ? 0.14 + naturalBreathing * 0.08 : 0.16 + smooth * 0.16);
+        // Calibrated amplitude: silky, graceful motion that breathes dynamically with ample breathing space
+        const amp = h * (s === "thinking" ? 0.11 : s === "listening" ? 0.13 + naturalBreathing * 0.05 : 0.15 + smooth * 0.13);
         const phase = time * (s === "speaking" ? 2.8 : s === "thinking" ? 1.4 : 2.0);
+        const maxExcursion = h * 0.35; // Guarantee at least 15% clearance from top and bottom boundaries
+
         ctx.save();
         ctx.globalAlpha = ribbon;
         ctx.strokeStyle = "#fffdf9";
@@ -107,7 +108,10 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
               const wave =
                 Math.sin(3 * Math.PI * u - phase + jitter * 0.25) +
                 0.12 * Math.sin(6 * Math.PI * u - phase * 1.4 + f * 0.5);
-              const y = cy + sign * amp * wobble * envelope * wave;
+              const rawDy = sign * amp * wobble * envelope * wave;
+              // Smooth hyperbolic tangent soft-limiting: strictly prevents clipping while retaining 100% natural fluidity
+              const dy = Math.tanh(rawDy / maxExcursion) * maxExcursion;
+              const y = cy + dy;
               if (i === 0) ctx.moveTo(x, y);
               else ctx.lineTo(x, y);
             }
@@ -131,7 +135,7 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
         width: "100%",
         maxWidth: size,
         height: "auto",
-        aspectRatio: "100 / 62",
+        aspectRatio: "100 / 85",
         display: "block",
       }}
     />

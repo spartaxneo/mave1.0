@@ -74,10 +74,10 @@ class Settings:
     hermes_api_url: str = field(default_factory=lambda: _env("HERMES_API_URL", "http://127.0.0.1:8642"))
     hermes_api_key: str = field(default_factory=lambda: _env("HERMES_API_KEY"))
     # Hermes model_routes aliases (hermes/profile/config.yaml).
-    hermes_voice_model: str = field(default_factory=lambda: _env("HERMES_VOICE_MODEL", "samantha-voice"))
-    hermes_work_model: str = field(default_factory=lambda: _env("HERMES_WORK_MODEL", "samantha-work"))
+    hermes_voice_model: str = field(default_factory=lambda: _env("HERMES_VOICE_MODEL", "mave-voice"))
+    hermes_work_model: str = field(default_factory=lambda: _env("HERMES_WORK_MODEL", "mave-work"))
     # Durable memory scope: one per person, stable across calls.
-    session_key: str = field(default_factory=lambda: _env("OS1_SESSION_KEY", "agent:samantha:voice:primary"))
+    session_key: str = field(default_factory=lambda: _env("OS1_SESSION_KEY", "agent:mave:voice:primary"))
     default_voice: str = field(default_factory=lambda: _env("OS1_DEFAULT_VOICE", "voice_1_warm"))
     # Jev (TypeSafe System One). live | off
     jev_transport: str = field(default_factory=lambda: _env("JEV_TRANSPORT", "live"))

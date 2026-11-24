@@ -1,6 +1,6 @@
 """Drama 3 delivery cues: performed by Fish, never shown on screen.
 
-Samantha's text can contain plain-language directions like ``[softly, amused]`` or
+Mave's text can contain plain-language directions like ``[softly, amused]`` or
 ``[small laugh]``. The TTS path keeps them; the caption path strips them.
 """
 

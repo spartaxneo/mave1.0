@@ -106,8 +106,8 @@ def test_first_meeting_overlay_until_named():
 
 
 def test_goodnight_sleeps_and_next_turn_wakes():
-    eng, ui = engine(Route(kind="chip", chip="Goodnight, Samantha"))
-    run(eng.decide("goodnight samantha"))
+    eng, ui = engine(Route(kind="chip", chip="Goodnight, Mave"))
+    run(eng.decide("goodnight mave"))
     assert ui.phase == "asleep"
     eng._router = FakeRouter(Route(kind="chat"))
     run(eng.decide("morning"))

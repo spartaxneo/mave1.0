@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the OS1 desktop app against Samantha's computer.
+# Run the Mave desktop app against Mave's computer.
 # Reads OS1_ORCHESTRATOR_URL and OS1_CLIENT_TOKEN from desktop.env (gitignored) at the repo root.
 set -euo pipefail
 cd "$(dirname "$0")/.."

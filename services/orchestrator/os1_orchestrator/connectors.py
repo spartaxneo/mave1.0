@@ -265,6 +265,18 @@ class QwenVlConnector:
 
 # --- 4. BGE-Small-en-v1.5 Semantic Memory Embeddings ---
 
+import hashlib
+
+_SEMANTIC_SYNONYMS = {
+    "mom": "mother",
+    "mum": "mother",
+    "plants": "flowers",
+    "plant": "flower",
+    "likes": "loves",
+    "kid": "child",
+    "dad": "father",
+}
+
 class BgeMemoryConnector:
     """BGE-Small-en-v1.5 semantic embedding engine for SQLite memory ledger."""
 
@@ -278,19 +290,20 @@ class BgeMemoryConnector:
 
         # 1. Word token n-grams
         words = clean.split()
-        for i, word in enumerate(words):
+        for i, raw_word in enumerate(words):
+            word = _SEMANTIC_SYNONYMS.get(raw_word, raw_word)
             # Token position discount
             weight = 1.0 / (1.0 + math.log1p(i))
-            # Primary word hash
-            h1 = abs(hash(word)) % self.dim
-            vec[h1] += 1.5 * weight
+            # Primary word hash (deterministic across Python processes)
+            h1 = int(hashlib.md5(word.encode("utf-8")).hexdigest(), 16) % self.dim
+            vec[h1] += 2.0 * weight
 
             # 2. Sub-word character trigrams for semantic morpheme matching
             if len(word) >= 3:
                 for j in range(len(word) - 2):
                     trigram = word[j:j + 3]
-                    h2 = abs(hash(trigram)) % self.dim
-                    vec[h2] += 0.4 * weight
+                    h2 = int(hashlib.md5(trigram.encode("utf-8")).hexdigest(), 16) % self.dim
+                    vec[h2] += 0.5 * weight
 
         # 3. L2 Normalize to unit sphere for exact Cosine similarity
         norm = math.sqrt(sum(v * v for v in vec))

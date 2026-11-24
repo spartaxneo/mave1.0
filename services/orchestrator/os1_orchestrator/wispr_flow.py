@@ -179,8 +179,10 @@ DEFAULT_DICTIONARY_ENTRIES: list[DictionaryEntry] = [
     DictionaryEntry(kind="correction", hear="insta gal", write="Instagram"),
     DictionaryEntry(kind="correction", hear="insta gram", write="Instagram"),
     DictionaryEntry(kind="correction", hear="instagram", write="Instagram"),
-    DictionaryEntry(kind="correction", hear="samatha", write="Samantha"),
-    DictionaryEntry(kind="correction", hear="samanta", write="Samantha"),
+    DictionaryEntry(kind="correction", hear="mayve", write="Mave"),
+    DictionaryEntry(kind="correction", hear="maev", write="Mave"),
+    DictionaryEntry(kind="correction", hear="samatha", write="Mave"),
+    DictionaryEntry(kind="correction", hear="samanta", write="Mave"),
     DictionaryEntry(kind="correction", hear="what do about", write="what to do about"),
     DictionaryEntry(kind="correction", hear="whats app", write="WhatsApp"),
     DictionaryEntry(kind="correction", hear="what's app", write="WhatsApp"),
@@ -366,7 +368,7 @@ class WisprFlowEngine:
         # Check for Command Mode trigger
         # e.g., "Command: make this more formal", "Rewrite: shorten this"
         command_match = re.match(
-            r"^(?:command|ask samantha|rewrite|action|make this)\s*[:,\-]?\s*(.*)$",
+            r"^(?:command|ask mave|ask samantha|rewrite|action|make this)\s*[:,\-]?\s*(.*)$",
             raw_text.strip(),
             flags=re.IGNORECASE,
         )
