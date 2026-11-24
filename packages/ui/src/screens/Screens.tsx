@@ -100,78 +100,78 @@ export function Preflight({
   };
 
   return (
-    <form
-      onSubmit={submit}
-      style={{
-        display: "grid",
-        justifyItems: "center",
-        gap: 24,
-        width: "100%",
-        maxWidth: 600,
-        padding: "clamp(24px, 5vh, 48px) 20px",
-        boxSizing: "border-box",
-      }}
-      className="os1-fade"
-    >
-      <input
-        ref={fileInputRef}
-        type="file"
-        // @ts-expect-error webkitdirectory standard on desktop browsers
-        webkitdirectory="true"
-        directory="true"
-        style={{ display: "none" }}
-        onChange={onFileInputChange}
-      />
-
-      <div className="os1-display">
-        MAVE<sup style={{ fontSize: "0.36em", verticalAlign: "top" }}>1.0</sup>
-      </div>
-
-      <label style={{ display: "grid", justifyItems: "center", gap: 14, width: "100%" }}>
-        <span className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
-          What should it call you?
-        </span>
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Your first name"
-          style={{
-            width: "100%",
-            maxWidth: 340,
-            background: "transparent",
-            border: "none",
-            borderBottom: "1px solid var(--on-coral-faint)",
-            color: "var(--on-coral)",
-            font: "200 clamp(24px, 5vw, 34px) var(--font-sans)",
-            textAlign: "center",
-            padding: "6px 0",
-            outline: "none",
-          }}
-        />
-      </label>
-
-      <button
-        type="submit"
-        disabled={!canProceed}
+    <>
+      <form
+        onSubmit={submit}
         style={{
-          padding: "11px 28px",
-          borderRadius: 999,
-          border: "none",
-          background: "var(--paper)",
-          color: "var(--coral-deep)",
-          font: "400 16px var(--font-sans)",
-          cursor: canProceed ? "pointer" : "not-allowed",
-          opacity: canProceed ? 1 : 0.45,
-          transition: "opacity 160ms ease, transform 160ms ease",
-          boxShadow: canProceed ? "0 2px 10px rgba(0, 0, 0, 0.08)" : "none",
-          marginTop: 6,
+          display: "grid",
+          justifyItems: "center",
+          gap: 24,
+          width: "100%",
+          maxWidth: 600,
+          padding: "clamp(24px, 5vh, 48px) 20px",
+          boxSizing: "border-box",
         }}
+        className="os1-fade"
       >
-        {busy ? "Starting…" : "Begin"}
-      </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          // @ts-expect-error webkitdirectory standard on desktop browsers
+          webkitdirectory="true"
+          directory="true"
+          style={{ display: "none" }}
+          onChange={onFileInputChange}
+        />
 
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginTop: 4 }}>
+        <div className="os1-display">
+          MAVE<sup style={{ fontSize: "0.36em", verticalAlign: "top" }}>1.0</sup>
+        </div>
+
+        <label style={{ display: "grid", justifyItems: "center", gap: 14, width: "100%" }}>
+          <span className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
+            What should it call you?
+          </span>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your first name"
+            style={{
+              width: "100%",
+              maxWidth: 340,
+              background: "transparent",
+              border: "none",
+              borderBottom: "1px solid var(--on-coral-faint)",
+              color: "var(--on-coral)",
+              font: "200 clamp(24px, 5vw, 34px) var(--font-sans)",
+              textAlign: "center",
+              padding: "6px 0",
+              outline: "none",
+            }}
+          />
+        </label>
+
+        <button
+          type="submit"
+          disabled={!canProceed}
+          style={{
+            padding: "11px 28px",
+            borderRadius: 999,
+            border: "none",
+            background: "var(--paper)",
+            color: "var(--coral-deep)",
+            font: "400 16px var(--font-sans)",
+            cursor: canProceed ? "pointer" : "not-allowed",
+            opacity: canProceed ? 1 : 0.45,
+            transition: "opacity 160ms ease, transform 160ms ease",
+            boxShadow: canProceed ? "0 2px 10px rgba(0, 0, 0, 0.08)" : "none",
+            marginTop: 6,
+          }}
+        >
+          {busy ? "Starting…" : "Begin"}
+        </button>
+
         <p
           className="os1-label"
           style={{
@@ -180,6 +180,7 @@ export function Preflight({
             textAlign: "center",
             lineHeight: 1.6,
             margin: 0,
+            marginTop: 4,
           }}
         >
           MAVE 1.0 listens through your microphone.
@@ -187,91 +188,92 @@ export function Preflight({
           You'll be asked to allow it.
         </p>
 
-        <div
-          className="os1-label"
-          style={{
-            fontSize: 11,
-            color: "var(--on-coral-dim)",
-            textAlign: "center",
-            margin: 0,
-            letterSpacing: "0.06em",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 5,
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span>MAVE will be installed in</span>
-          <button
-            type="button"
-            onClick={handleChooseFolder}
-            title="Click to select folder in Finder"
+        {error && (
+          <div
             style={{
-              background: "transparent",
-              border: "none",
-              padding: "0 2px",
+              padding: "16px 22px",
+              background: "rgba(0, 0, 0, 0.22)",
+              border: "1px solid rgba(255, 255, 255, 0.22)",
+              borderRadius: 14,
               color: "var(--paper)",
-              font: "400 11px var(--font-mono)",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-              cursor: "pointer",
-              letterSpacing: "0.02em",
-              transition: "opacity 120ms ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = "0.75";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = "1";
+              fontSize: 13,
+              maxWidth: 440,
+              width: "100%",
+              textAlign: "center",
+              lineHeight: 1.45,
+              boxShadow: "0 4px 18px rgba(0, 0, 0, 0.12)",
+              marginTop: 4,
             }}
           >
-            "{formatDisplayDir(storageDir)}"
-          </button>
-        </div>
-      </div>
+            <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 6, color: "var(--paper)" }}>System Notice</div>
+            <div style={{ opacity: 0.95, wordBreak: "break-word" }}>{error}</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={handleCleanAndRetry}
+                style={{
+                  fontSize: 12,
+                  padding: "6px 18px",
+                  borderRadius: 999,
+                  background: "var(--paper)",
+                  color: "var(--coral-deep)",
+                  border: "none",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.12)",
+                }}
+              >
+                Clean Caches &amp; Retry
+              </button>
+            </div>
+          </div>
+        )}
+      </form>
 
-      {error && (
-        <div
+      <div
+        className="os1-label os1-corner-bc"
+        style={{
+          fontSize: 11,
+          color: "var(--on-coral-dim)",
+          textAlign: "center",
+          letterSpacing: "0.06em",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+          whiteSpace: "nowrap",
+          bottom: "clamp(24px, 4.5vh, 44px)",
+          zIndex: 30,
+        }}
+      >
+        <span>MAVE will be installed in</span>
+        <button
+          type="button"
+          onClick={handleChooseFolder}
+          title="Click to select folder in Finder"
           style={{
-            padding: "16px 22px",
-            background: "rgba(0, 0, 0, 0.22)",
-            border: "1px solid rgba(255, 255, 255, 0.22)",
-            borderRadius: 14,
+            background: "transparent",
+            border: "none",
+            padding: "0 2px",
             color: "var(--paper)",
-            fontSize: 13,
-            maxWidth: 440,
-            width: "100%",
-            textAlign: "center",
-            lineHeight: 1.45,
-            boxShadow: "0 4px 18px rgba(0, 0, 0, 0.12)",
-            marginTop: 4,
+            font: "400 11px var(--font-mono)",
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+            cursor: "pointer",
+            letterSpacing: "0.02em",
+            transition: "opacity 120ms ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.opacity = "0.75";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.opacity = "1";
           }}
         >
-          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 6, color: "var(--paper)" }}>System Notice</div>
-          <div style={{ opacity: 0.95, wordBreak: "break-word" }}>{error}</div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 12 }}>
-            <button
-              type="button"
-              onClick={handleCleanAndRetry}
-              style={{
-                fontSize: 12,
-                padding: "6px 18px",
-                borderRadius: 999,
-                background: "var(--paper)",
-                color: "var(--coral-deep)",
-                border: "none",
-                fontWeight: 500,
-                cursor: "pointer",
-                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.12)",
-              }}
-            >
-              Clean Caches &amp; Retry
-            </button>
-          </div>
-        </div>
-      )}
-    </form>
+          "{formatDisplayDir(storageDir)}"
+        </button>
+      </div>
+    </>
   );
 }
 

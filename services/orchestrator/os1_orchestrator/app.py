@@ -1521,7 +1521,7 @@ async def audio_transcribe_endpoint(req: AudioTranscribeRequest) -> dict[str, An
                 samples,
                 language=req.language,
                 beam_size=5,
-                initial_prompt="Samantha, OS1, Theodore, Instagram, Twitter, WhatsApp, Mac, computer, inbox, email, calendar, Spotify, YouTube, settings, weather, browser.",
+                initial_prompt="Samantha, Mave, OS1, female, male, with people, happier on my own, a bit of both, good, complicated, let's begin, continue, yes, no, Theodore, Instagram, Twitter, WhatsApp, Mac, computer, inbox, email, calendar, settings, browser.",
                 vad_filter=True,
                 vad_parameters=dict(min_silence_duration_ms=400),
             )

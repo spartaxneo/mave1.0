@@ -189,10 +189,11 @@ export function isEchoOrSilenceHallucination(
     return true;
   }
 
-  // Acoustic echo rejection: does transcript match or overlap the assistant's own recent line?
+  // Acoustic echo rejection: ONLY reject if the transcription is a verbatim recapture of the ENTIRE long prompt sentence (> 30 chars).
+  // NEVER reject short answers or prompt option choices (e.g. 'female', 'male', 'with people', 'good', 'complicated').
   if (lastAgentLine) {
     const cleanAgent = lastAgentLine.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
-    if (cleanAgent.length > 0 && clean.length > 5 && cleanAgent.includes(clean)) {
+    if (cleanAgent.length > 30 && clean.length > 25 && (clean === cleanAgent || clean.startsWith(cleanAgent))) {
       return true;
     }
   }
