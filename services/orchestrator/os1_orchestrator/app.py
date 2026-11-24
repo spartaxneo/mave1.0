@@ -1514,7 +1514,7 @@ async def audio_transcribe_endpoint(req: AudioTranscribeRequest) -> dict[str, An
     rms = float(np.sqrt(np.mean(samples**2))) if len(samples) > 0 else 0.0
 
     # Gate silent or near-silent acoustic frames (room hum, mic hiss)
-    if len(samples) > 0 and rms >= 0.012:
+    if len(samples) > 0 and rms >= 0.001:
         try:
             # Faster-Whisper with beam_size=5, vocabulary prompt, and VAD filter
             segments, _info = whisper.transcribe(
@@ -1526,10 +1526,12 @@ async def audio_transcribe_endpoint(req: AudioTranscribeRequest) -> dict[str, An
                 vad_parameters=dict(min_silence_duration_ms=400),
             )
             raw_text = " ".join(s.text.strip() for s in segments if s.text.strip()).strip()
+            log.info("Whisper transcribed: '%s' (rms=%.4f)", raw_text, rms)
         except Exception:
             try:
                 segments, _info = whisper.transcribe(samples, language=req.language, beam_size=1)
                 raw_text = " ".join(s.text.strip() for s in segments if s.text.strip()).strip()
+                log.info("Whisper fallback transcribed: '%s' (rms=%.4f)", raw_text, rms)
             except Exception as exc:
                 log.warning("Whisper transcription error: %s", exc)
 
@@ -1755,6 +1757,38 @@ async def installer_start_endpoint(req: InstallerStartRequest | None = None) -> 
         "status": "started",
         "message": "OS1 initiated autonomous installation of local neural models.",
     }
+
+
+@app.post("/os1/installer/choose-directory", dependencies=authed)
+async def choose_directory_endpoint() -> dict[str, Any]:
+    """Open native macOS Finder folder picker dialog to select install destination."""
+    if sys.platform != "darwin":
+        return {"ok": False, "error": "Native folder picker only supported on macOS"}
+
+    script = """
+    try
+        set chosen to POSIX path of (choose folder with prompt "Select folder to store MAVE models and data:" default location (POSIX file (POSIX path of (path to home folder))))
+        return chosen
+    on error
+        return ""
+    end try
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e", script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+        selected_path = stdout.decode().strip()
+        if selected_path:
+            if len(selected_path) > 1 and selected_path.endswith("/"):
+                selected_path = selected_path[:-1]
+            installer.set_storage_dir(selected_path)
+            return {"ok": True, "path": selected_path}
+        return {"ok": True, "cancelled": True}
+    except Exception as err:
+        return {"ok": False, "error": str(err)}
 
 
 class LocalSynthesizeRequest(BaseModel):

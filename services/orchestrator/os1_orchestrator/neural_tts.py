@@ -117,7 +117,7 @@ class NeuralTtsEngine:
             except Exception as e:
                 log.debug("Disk cache read note: %s", e)
 
-        # 3. Generate via Edge-TTS Neural Voice (with 2.2s timeout for instantaneous responsiveness)
+        # 3. Generate via Edge-TTS Neural Voice (generous 8s timeout for high-fidelity neural speech)
         try:
             import edge_tts
 
@@ -129,7 +129,7 @@ class NeuralTtsEngine:
                         audio_buf.write(chunk["data"])
                 return audio_buf.getvalue()
 
-            audio_bytes = await asyncio.wait_for(_fetch_edge(), timeout=2.2)
+            audio_bytes = await asyncio.wait_for(_fetch_edge(), timeout=8.0)
             if len(audio_bytes) > 200:
                 # Save to disk cache and RAM cache
                 try:

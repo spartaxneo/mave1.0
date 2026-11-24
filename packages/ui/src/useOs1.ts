@@ -966,7 +966,7 @@ export function useOs1(config: Os1Config) {
             scriptNode = audioCtx.createScriptProcessor(2048, 1, 1);
             scriptNode.onaudioprocess = (e) => {
               const now = Date.now();
-              if (isSpeaking && !isAgentSpeakingGlobally && now - lastAgentSpeechEndTime > 1000) {
+              if (isSpeaking && !isAgentSpeakingGlobally && now - lastAgentSpeechEndTime > 150) {
                 const channel = e.inputBuffer.getChannelData(0);
                 pcmChunks.push(new Float32Array(channel));
               }
@@ -988,7 +988,7 @@ export function useOs1(config: Os1Config) {
                 offset += c.length;
               }
               pcmChunks = [];
-              if (merged.length > 1600) {
+              if (merged.length > 1200) {
                 const pcm16k = downsampleTo16k(merged, audioCtx.sampleRate);
                 audioBlob = encodeWavBlob(pcm16k, 16000);
               }
@@ -1015,11 +1015,8 @@ export function useOs1(config: Os1Config) {
                 const now = Date.now();
                 if (!heard || heard.length < 2) return;
 
-                // Gating: Mute during assistant speech or during the 1000ms acoustic guard interval
-                if (isAgentSpeakingGlobally || now - lastAgentSpeechEndTime < 1000) return;
-
-                // Silence hallucination check: require genuine acoustic vocal energy
-                if (now - lastUserVocalEnergyTime > 2200) return;
+                // Gating: Mute during assistant speech or during the 150ms acoustic guard interval
+                if (isAgentSpeakingGlobally || now - lastAgentSpeechEndTime < 150) return;
 
                 // Acoustic self-echo filter
                 if (isEchoOrSilenceHallucination(heard, lastAgentUtteredText || stateRef.current.agentLine, lastUserVocalEnergyTime, now)) {
@@ -1035,7 +1032,7 @@ export function useOs1(config: Os1Config) {
                 if (
                   active &&
                   stateRef.current.agentState === "listening" &&
-                  now - lastSayTriggerTime > 700
+                  now - lastSayTriggerTime > 500
                 ) {
                   lastSayTriggerTime = now;
                   setState((s) => ({ ...s, userLine: heard }));
@@ -1051,7 +1048,7 @@ export function useOs1(config: Os1Config) {
           const tick = () => {
             if (!active) return;
             const now = Date.now();
-            const isAgentActive = isAgentSpeakingGlobally || now - lastAgentSpeechEndTime < 350 || stateRef.current.agentState !== "listening";
+            const isAgentActive = isAgentSpeakingGlobally || now - lastAgentSpeechEndTime < 150 || stateRef.current.agentState !== "listening";
 
             if (analyser && !isAgentActive) {
               analyser.getByteFrequencyData(dataArray);
@@ -1059,22 +1056,22 @@ export function useOs1(config: Os1Config) {
               for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
               const avg = sum / dataArray.length;
               const norm = Math.min(1, avg / 75);
-              levels.current.user = norm > 0.02 ? norm : 0;
+              levels.current.user = norm > 0.015 ? norm : 0;
 
-              // Track genuine human vocal acoustic energy
-              if (avg >= 1.5) {
+              // Track vocal acoustic energy
+              if (avg >= 0.6) {
                 lastUserVocalEnergyTime = now;
               }
 
-              // Voice Activity Detection (threshold: 2.2 to be responsive to normal microphone levels)
-              if (avg >= 2.2) {
+              // Voice Activity Detection (threshold: 0.8 catches quiet/normal voices reliably)
+              if (avg >= 0.8) {
                 if (!isSpeaking) {
                   isSpeaking = true;
                   pcmChunks = [];
                   chunks = [];
                 }
                 lastSpeechTime = now;
-              } else if (isSpeaking && now - lastSpeechTime > 600) {
+              } else if (isSpeaking && now - lastSpeechTime > 550) {
                 isSpeaking = false;
                 void sendRecordedAudio();
               }

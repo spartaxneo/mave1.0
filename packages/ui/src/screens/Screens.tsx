@@ -48,7 +48,41 @@ export function Preflight({
 }) {
   const [name, setName] = useState("");
   const [storageDir, setStorageDir] = useState("~/.mave");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const canProceed = !busy;
+
+  const handleChooseFolder = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:3008/os1/installer/choose-directory", {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.path) {
+          setStorageDir(data.path);
+          return;
+        }
+        if (data.cancelled) return;
+      }
+    } catch {}
+    fileInputRef.current?.click();
+  };
+
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      const path = (file as any).path || (file as any).webkitRelativePath?.split("/")[0];
+      if (path) {
+        setStorageDir(path.startsWith("/") ? path : `~/${path}`);
+      }
+    }
+  };
+
+  const formatDisplayDir = (dir: string) => {
+    if (!dir) return "~/.mave";
+    return dir.replace(/^\/Users\/[^/]+/, "~");
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -73,17 +107,27 @@ export function Preflight({
         justifyItems: "center",
         gap: 24,
         width: "100%",
-        maxWidth: 500,
+        maxWidth: 600,
         padding: "clamp(24px, 5vh, 48px) 20px",
         boxSizing: "border-box",
       }}
       className="os1-fade"
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory standard on desktop browsers
+        webkitdirectory="true"
+        directory="true"
+        style={{ display: "none" }}
+        onChange={onFileInputChange}
+      />
+
       <div className="os1-display">
         MAVE<sup style={{ fontSize: "0.36em", verticalAlign: "top" }}>1.0</sup>
       </div>
 
-      <label style={{ display: "grid", justifyItems: "center", gap: 12, width: "100%" }}>
+      <label style={{ display: "grid", justifyItems: "center", gap: 14, width: "100%" }}>
         <span className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
           What should it call you?
         </span>
@@ -103,31 +147,6 @@ export function Preflight({
             textAlign: "center",
             padding: "6px 0",
             outline: "none",
-          }}
-        />
-      </label>
-
-      <label style={{ display: "grid", justifyItems: "center", gap: 8, width: "100%", marginTop: 2 }}>
-        <span className="os1-label" style={{ color: "var(--on-coral-dim)", fontSize: 11, letterSpacing: "0.14em" }}>
-          Storage folder
-        </span>
-        <input
-          value={storageDir}
-          onChange={(e) => setStorageDir(e.target.value)}
-          placeholder="~/.mave"
-          spellCheck={false}
-          style={{
-            width: "100%",
-            maxWidth: 260,
-            background: "transparent",
-            border: "none",
-            borderBottom: "1px solid var(--on-coral-faint)",
-            color: "var(--on-coral)",
-            font: "400 13px/1.4 var(--font-mono)",
-            textAlign: "center",
-            padding: "4px 0",
-            outline: "none",
-            opacity: 0.85,
           }}
         />
       </label>
@@ -152,19 +171,65 @@ export function Preflight({
         {busy ? "Starting…" : "Begin"}
       </button>
 
-      <p
-        className="os1-label"
-        style={{
-          fontSize: 11,
-          color: "var(--on-coral-dim)",
-          maxWidth: 420,
-          textAlign: "center",
-          lineHeight: 1.5,
-          margin: 0,
-        }}
-      >
-        MAVE 1.0 listens through your microphone. You'll be asked to allow it.
-      </p>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginTop: 4 }}>
+        <p
+          className="os1-label"
+          style={{
+            fontSize: 11,
+            color: "var(--on-coral-dim)",
+            textAlign: "center",
+            lineHeight: 1.6,
+            margin: 0,
+          }}
+        >
+          MAVE 1.0 listens through your microphone.
+          <br />
+          You'll be asked to allow it.
+        </p>
+
+        <div
+          className="os1-label"
+          style={{
+            fontSize: 11,
+            color: "var(--on-coral-dim)",
+            textAlign: "center",
+            margin: 0,
+            letterSpacing: "0.06em",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span>MAVE will be installed in</span>
+          <button
+            type="button"
+            onClick={handleChooseFolder}
+            title="Click to select folder in Finder"
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: "0 2px",
+              color: "var(--paper)",
+              font: "400 11px var(--font-mono)",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+              cursor: "pointer",
+              letterSpacing: "0.02em",
+              transition: "opacity 120ms ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = "0.75";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = "1";
+            }}
+          >
+            "{formatDisplayDir(storageDir)}"
+          </button>
+        </div>
+      </div>
 
       {error && (
         <div
