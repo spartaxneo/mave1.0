@@ -32,7 +32,8 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
     const w = size;
-    const h = size * 0.42;
+    // Generous vertical headroom (0.62) gives the ribbon full space to animate and breathe without any clipping
+    const h = size * 0.62;
     el.width = w * dpr;
     el.height = h * dpr;
     ctx.scale(dpr, dpr);
@@ -84,8 +85,10 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
 
       if (ribbon > 0.02) {
         // Ribbon: three-lobe living ribbon with pointed ends
-        const span = w * (s === "thinking" ? 0.58 : s === "listening" ? 0.76 : 0.84);
-        const amp = h * (s === "thinking" ? 0.16 : s === "listening" ? 0.18 + naturalBreathing * 0.14 : 0.22 + smooth * 0.28);
+        const span = w * (s === "thinking" ? 0.6 : s === "listening" ? 0.78 : 0.84);
+        // Calibrated amplitude: at maximum speech level, wave peaks stay safely within 0.36 * h,
+        // leaving guaranteed generous headroom at top and bottom so the ribbon never clips.
+        const amp = h * (s === "thinking" ? 0.12 : s === "listening" ? 0.14 + naturalBreathing * 0.08 : 0.16 + smooth * 0.16);
         const phase = time * (s === "speaking" ? 2.8 : s === "thinking" ? 1.4 : 2.0);
         ctx.save();
         ctx.globalAlpha = ribbon;
@@ -128,7 +131,7 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
         width: "100%",
         maxWidth: size,
         height: "auto",
-        aspectRatio: "100 / 42",
+        aspectRatio: "100 / 62",
         display: "block",
       }}
     />
