@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-const FALLBACK_CONFIG: Os1Config = { orchestratorUrl: "http://127.0.0.1:8787" };
+const FALLBACK_CONFIG: Os1Config = { orchestratorUrl: "http://127.0.0.1:3008" };
 
 function Root() {
   const [config, setConfig] = useState<Os1Config | null>(() => window.os1?.config ?? (window.os1?.getConfig ? null : FALLBACK_CONFIG));

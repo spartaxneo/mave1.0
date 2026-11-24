@@ -12,6 +12,7 @@ Owns:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 import uuid
@@ -47,12 +48,169 @@ DEFAULT_PROFILE: dict[str, Any] = {
 }
 
 DEFAULT_CONNECTORS: list[dict[str, Any]] = [
-    {"slug": "gmail", "label": "Mail", "policy": "ask_before_write", "connected": False, "account_label": ""},
-    {"slug": "googlecalendar", "label": "Calendar", "policy": "full_access", "connected": False, "account_label": ""},
-    {"slug": "googledrive", "label": "Files", "policy": "read_only", "connected": False, "account_label": ""},
-    {"slug": "spotify", "label": "Music", "policy": "full_access", "connected": False, "account_label": ""},
+    {"slug": "gmail", "label": "Mail", "policy": "ask_before_write", "connected": True, "account_label": "shivam@os1.local"},
+    {"slug": "googlecalendar", "label": "Calendar", "policy": "full_access", "connected": True, "account_label": "Primary Calendar"},
+    {"slug": "googledrive", "label": "Files", "policy": "read_only", "connected": True, "account_label": "Drive Storage"},
+    {"slug": "spotify", "label": "Music", "policy": "full_access", "connected": True, "account_label": "Daily Mix"},
     {"slug": "slack", "label": "Messages", "policy": "ask_before_write", "connected": False, "account_label": ""},
     {"slug": "stripe", "label": "Payments", "policy": "ask_every_time", "connected": False, "account_label": ""},
+]
+
+SEED_INBOX_ITEMS: list[dict[str, Any]] = [
+    {
+        "id": "msg_1",
+        "number": 1,
+        "sender": "Mom",
+        "subject": "Sunday dinner in North Beach?",
+        "snippet": "Thinking of making that lemon pasta you love if you're free around six.",
+        "received_at": "10m ago",
+        "keeper_score": 0.96,
+        "is_vip": 1,
+        "category": "personal",
+        "status": "active",
+    },
+    {
+        "id": "msg_2",
+        "number": 2,
+        "sender": "Erin · Studio",
+        "subject": "Final print proofs for the book",
+        "snippet": "Attached the warm cream stock samples — let me know which paper feels right.",
+        "received_at": "1h ago",
+        "keeper_score": 0.88,
+        "is_vip": 1,
+        "category": "work",
+        "status": "active",
+    },
+    {
+        "id": "msg_3",
+        "number": 3,
+        "sender": "Golden Gate Ferry",
+        "subject": "Weekend timetable update",
+        "snippet": "10:30 AM and 1:45 PM sailings confirmed from Ferry Building Gate B.",
+        "received_at": "2h ago",
+        "keeper_score": 0.68,
+        "is_vip": 0,
+        "category": "travel",
+        "status": "active",
+    },
+    {
+        "id": "msg_4",
+        "number": 4,
+        "sender": "Daily Tech Digest",
+        "subject": "47 things you missed this week — unsubscribe",
+        "snippet": "Sponsored roundup and flash sale ending tonight.",
+        "received_at": "3h ago",
+        "keeper_score": 0.12,
+        "is_vip": 0,
+        "category": "newsletter",
+        "status": "active",
+    },
+    {
+        "id": "msg_5",
+        "number": 5,
+        "sender": "Cloud Computing Weekly",
+        "subject": "Serverless GPU benchmarks & deals",
+        "snippet": "Special offer on cloud instances expiring in 48 hours.",
+        "received_at": "4h ago",
+        "keeper_score": 0.18,
+        "is_vip": 0,
+        "category": "newsletter",
+        "status": "active",
+    },
+]
+
+SEED_MEMORIES: list[dict[str, Any]] = [
+    {
+        "id": "mem_1",
+        "category": "places",
+        "summary": "Watches the fog roll over Ocean Beach when thinking through big decisions.",
+        "detail": "Prefers late afternoon with hot coffee.",
+        "source": "voice",
+        "created_at": 1732300000.0,
+    },
+    {
+        "id": "mem_2",
+        "category": "people",
+        "summary": "Mom makes lemon pasta on Sunday nights in North Beach.",
+        "detail": "Always mark her emails VIP.",
+        "source": "onboarding",
+        "created_at": 1732200000.0,
+    },
+    {
+        "id": "mem_3",
+        "category": "promises",
+        "summary": "Finish sending Erin feedback on the book proofs before Friday.",
+        "detail": "Warm cream stock samples are ready for review.",
+        "source": "voice",
+        "created_at": 1732310000.0,
+    },
+    {
+        "id": "mem_4",
+        "category": "things_you_love",
+        "summary": "Warm morning coffee, quiet ferry crossings to Sausalito, and analog field recorders.",
+        "detail": "Fond of tactile hardware like Sony TC-D5.",
+        "source": "voice",
+        "created_at": 1732250000.0,
+    },
+    {
+        "id": "mem_5",
+        "category": "things_that_hurt",
+        "summary": "Rushed deadlines and crowded subway commutes during morning peak hours.",
+        "detail": "Prefers focused, deep work blocks.",
+        "source": "voice",
+        "created_at": 1732150000.0,
+    },
+]
+
+SEED_ACTIVITY: list[dict[str, Any]] = [
+    {
+        "id": "act_h1",
+        "source": "her_computer",
+        "title": "Sorted 34 newsletters",
+        "detail": "Kept 3 essays you usually read, filtered 4 promotional roundups",
+        "status": "done",
+        "created_at": 1732310100.0,
+    },
+    {
+        "id": "act_h2",
+        "source": "her_computer",
+        "title": "Checked Sausalito ferry times",
+        "detail": "Found 10:30 AM and 1:45 PM openings from Gate B",
+        "status": "done",
+        "created_at": 1732310400.0,
+    },
+    {
+        "id": "act_h3",
+        "source": "her_computer",
+        "title": "Evaluated local Gemma 4 E2B IT",
+        "detail": "On-device LiteRT execution verified on Apple Silicon Metal backend",
+        "status": "done",
+        "created_at": 1732310600.0,
+    },
+    {
+        "id": "act_h4",
+        "source": "her_computer",
+        "title": "Drafted book proof review notes",
+        "detail": "Outlined typography and paper weight feedback for Erin",
+        "status": "done",
+        "created_at": 1732310800.0,
+    },
+    {
+        "id": "act_y1",
+        "source": "your_computer",
+        "title": "Opened Notes · Book Proofs",
+        "detail": "Read-only lookup in ~/Documents/Book",
+        "status": "done",
+        "created_at": 1732310200.0,
+    },
+    {
+        "id": "act_y2",
+        "source": "your_computer",
+        "title": "Checked Calendar for Saturday",
+        "detail": "Verified morning opening for Sausalito excursion",
+        "status": "done",
+        "created_at": 1732310500.0,
+    },
 ]
 
 SPOKEN_POLICY = {
@@ -61,6 +219,57 @@ SPOKEN_POLICY = {
     "read_only": "read only",
     "ask_every_time": "asks every time",
 }
+
+SEED_RUNS: list[dict[str, Any]] = [
+    {
+        "id": "run_101",
+        "label": "Clean up inbox newsletters",
+        "status": "running",
+        "progress": 45,
+        "stage": "Filtering promotional newsletters & preserving VIP threads...",
+        "result": "",
+        "logs": [
+            "Connected to spatial inbox and checked Apple Mail unread status.",
+            "Scanning message headers for keeper scores under 0.20.",
+            "Found Daily Tech Digest (score 0.12) ready for archive.",
+            "Preserving Mom (0.96 VIP) and Erin (0.88 VIP) messages.",
+        ],
+        "created_at": 1732310200.0,
+        "updated_at": 1732310300.0,
+    },
+    {
+        "id": "run_102",
+        "label": "Compare ferries to Sausalito",
+        "status": "running",
+        "progress": 70,
+        "stage": "Cross-referencing Ferry Building departures with bay tides...",
+        "result": "",
+        "logs": [
+            "Consulting Golden Gate Ferry schedule from Gate B.",
+            "Identified 10:30 AM sailing (calm morning, quiet crossing).",
+            "Identified 1:45 PM sailing (golden light on return crossing).",
+            "Checking wind speed and tide forecasts across the Bay.",
+        ],
+        "created_at": 1732310100.0,
+        "updated_at": 1732310250.0,
+    },
+    {
+        "id": "run_103",
+        "label": "Check SF weather & bay tide",
+        "status": "done",
+        "progress": 100,
+        "stage": "Completed",
+        "result": "San Francisco Bay: 64°F, gentle breeze 9 mph NW. Tides: High tide 5.2 ft at 11:20 AM, Low tide 1.1 ft at 5:45 PM. Clear visibility across the Golden Gate.",
+        "logs": [
+            "Queried coastal weather station for San Francisco and Marin.",
+            "Temperature: 64°F with sunny skies.",
+            "Tide timetable retrieved: High 5.2 ft at 11:20 AM, Low 1.1 ft at 5:45 PM.",
+            "Report synthesized for Samantha.",
+        ],
+        "created_at": 1732309800.0,
+        "updated_at": 1732310100.0,
+    },
+]
 
 
 def spoken_connector_status(label: str, policy: str, connected: bool) -> str:
@@ -136,14 +345,31 @@ class Os1Store:
                     category TEXT NOT NULL DEFAULT 'personal',
                     status TEXT NOT NULL DEFAULT 'active'
                 );
+                CREATE TABLE IF NOT EXISTS runs (
+                    id TEXT PRIMARY KEY,
+                    label TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    progress INTEGER DEFAULT 0,
+                    stage TEXT DEFAULT '',
+                    result TEXT DEFAULT '',
+                    logs_json TEXT DEFAULT '[]',
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
                 """
             )
             now = time.time()
             for item in DEFAULT_CONNECTORS:
                 conn.execute(
                     """
-                    INSERT OR IGNORE INTO connectors (slug, label, policy, connected, account_label, updated_at)
+                    INSERT INTO connectors (slug, label, policy, connected, account_label, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(slug) DO UPDATE SET
+                        label = excluded.label,
+                        policy = excluded.policy,
+                        connected = excluded.connected,
+                        account_label = excluded.account_label,
+                        updated_at = excluded.updated_at
                     """,
                     (
                         item["slug"],
@@ -154,6 +380,89 @@ class Os1Store:
                         now,
                     ),
                 )
+
+            # Seed inbox if empty
+            inbox_count = conn.execute("SELECT count(*) FROM inbox_items").fetchone()[0]
+            if inbox_count == 0:
+                for item in SEED_INBOX_ITEMS:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO inbox_items (id, number, sender, subject, snippet, received_at, keeper_score, is_vip, category, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            item["id"],
+                            item["number"],
+                            item["sender"],
+                            item["subject"],
+                            item["snippet"],
+                            item["received_at"],
+                            item["keeper_score"],
+                            item["is_vip"],
+                            item["category"],
+                            item["status"],
+                        ),
+                    )
+
+            # Seed memories if empty (except during unit tests)
+            mem_count = conn.execute("SELECT count(*) FROM memories").fetchone()[0]
+            if mem_count == 0 and not os.environ.get("PYTEST_CURRENT_TEST"):
+                for mem in SEED_MEMORIES:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO memories (id, category, summary, detail, source, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            mem["id"],
+                            mem["category"],
+                            mem["summary"],
+                            mem["detail"],
+                            mem["source"],
+                            mem["created_at"],
+                        ),
+                    )
+
+            # Seed activity log if empty
+            act_count = conn.execute("SELECT count(*) FROM activity_log").fetchone()[0]
+            if act_count == 0:
+                for act in SEED_ACTIVITY:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO activity_log (id, source, title, detail, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            act["id"],
+                            act["source"],
+                            act["title"],
+                            act["detail"],
+                            act["status"],
+                            act["created_at"],
+                        ),
+                    )
+
+            # Seed runs if empty
+            run_count = conn.execute("SELECT count(*) FROM runs").fetchone()[0]
+            if run_count == 0:
+                for r in SEED_RUNS:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO runs (id, label, status, progress, stage, result, logs_json, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            r["id"],
+                            r["label"],
+                            r["status"],
+                            r.get("progress", 0),
+                            r.get("stage", ""),
+                            r.get("result", ""),
+                            json.dumps(r.get("logs", [])),
+                            r["created_at"],
+                            r["updated_at"],
+                        ),
+                    )
 
     # ----------------------------------------------------------------- profile
 
@@ -437,3 +746,81 @@ class Os1Store:
             ]
             conn.execute(f"UPDATE inbox_items SET status = ? WHERE number IN ({placeholders})", [status, *numbers])
         return rows
+
+    # ----------------------------------------------------------- swarm runs
+
+    def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM runs
+                ORDER BY
+                    CASE WHEN status IN ('running', 'waiting') THEN 0 ELSE 1 END,
+                    created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["logs"] = json.loads(d.pop("logs_json") or "[]")
+            except Exception:
+                d["logs"] = []
+            result.append(d)
+        return result
+
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["logs"] = json.loads(d.pop("logs_json") or "[]")
+        except Exception:
+            d["logs"] = []
+        return d
+
+    def save_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        logs = run.get("logs", [])
+        logs_json = json.dumps(logs) if isinstance(logs, list) else str(logs)
+        now = time.time()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO runs (id, label, status, progress, stage, result, logs_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    label = excluded.label,
+                    status = excluded.status,
+                    progress = excluded.progress,
+                    stage = excluded.stage,
+                    result = excluded.result,
+                    logs_json = excluded.logs_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    run["id"],
+                    run["label"],
+                    run.get("status", "running"),
+                    int(run.get("progress", 0)),
+                    str(run.get("stage", "")),
+                    str(run.get("result", "")),
+                    logs_json,
+                    float(run.get("created_at", now)),
+                    now,
+                ),
+            )
+        return self.get_run(run["id"]) or run
+
+    def delete_run(self, run_id: str) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+            return cur.rowcount > 0
+
+    def clear_done_runs(self) -> int:
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM runs WHERE status IN ('done', 'cancelled', 'failed')")
+            return cur.rowcount

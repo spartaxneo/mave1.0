@@ -5,7 +5,7 @@
 
 operator:
   welcome: >-
-    Hello, {name}. You're about to meet OS1. A few quick questions first,
+    Hello, {name}. You're about to meet MAVE 1.0. A few quick questions first,
     and then it's all yours.
   q1_social: "First one. When you have a free evening, are you out with people, or happier on your own?"
   q1_hesitance: "You paused there. Not sure?"

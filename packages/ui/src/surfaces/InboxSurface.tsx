@@ -20,32 +20,21 @@ export function InboxSurface({
   const newsletterCount = items.filter((m) => m.keeper_score < 0.35 || m.category === "newsletter").length;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        padding: "52px 56px 96px",
-        display: "grid",
-        gridTemplateRows: "auto 1fr auto",
-        gap: 24,
-        maxWidth: 1220,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
+    <div className="os1-surface-container">
+      <div className="os1-surface-header">
         <div>
           <div className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
             07 · Spatial Inbox
           </div>
-          <h2 style={{ margin: "6px 0 0", font: "200 40px/1.1 var(--font-sans)" }}>
+          <h2 className="os1-surface-title">
             {items.length} waiting
             {newsletterCount > 0 ? ` · ${newsletterCount} ${newsletterCount === 1 ? "newsletter" : "newsletters"}` : ""}
           </h2>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {newsletterCount > 0 && (
             <button type="button" className="os1-pill" onClick={() => onAction("trash_newsletters")}>
-              “Trash the newsletters”
+              “Trash newsletters”
             </button>
           )}
           <button type="button" className="os1-pill" onClick={() => onAction("refresh")}>
@@ -61,7 +50,7 @@ export function InboxSurface({
         className="os1-scroll"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(clamp(260px, 100%, 340px), 1fr))",
           gap: 16,
           alignContent: "start",
         }}
@@ -72,7 +61,7 @@ export function InboxSurface({
               Your inbox is clear.
             </p>
             <p style={{ margin: "8px 0 0", color: "var(--on-coral-dim)", fontSize: 15 }}>
-              Connect Mail in Connectors or ask Samantha “look through my email” to populate your spatial inbox.
+              Connect Mail in Connectors or ask MAVE “look through my email” to populate your spatial inbox.
             </p>
           </div>
         ) : (

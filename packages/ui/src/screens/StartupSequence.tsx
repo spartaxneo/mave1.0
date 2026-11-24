@@ -3,21 +3,21 @@ import { InfinityLoader } from "../components/InfinityLoader";
 import { sound } from "../sound";
 
 // Optional local boot audio: bundled when present locally, gracefully falls back to synthesized sound.boot() in public builds.
-const _localBootAudio = import.meta.glob<string>("../assets/init_sound.mp3", { eager: true, import: "default" });
+const _localBootAudio = import.meta.glob<string>("../assets/init_sound.{mp3,m4a,wav}", { eager: true, import: "default" });
 const initSoundUrl: string | null = Object.values(_localBootAudio)[0] ?? null;
 
 /**
  * OS1 Startup Sequence — continuous 3D infinity-helix → ring WebGL animation
- * driven directly by `init_sound.mp3` (14.16 s) via `audio.currentTime` + live
- * WebAudio `AnalyserNode` energy so visuals and sound stay sample-locked:
+ * driven directly by `init_sound.m4a` / `init_sound.mp3` (14.2 s) via WebAudio
+ * `AudioBufferSourceNode` + live `AnalyserNode` energy so visuals and sound stay sample-locked:
  *   -0.90–0.00 s  coral field warms up; 3D infinity helix emerges and spins calmly
  *    0.00–5.20 s  accelerating pulses; gossamer echo filament trails the ribbon
  *    5.20–10.75 s 90° turn into depth + continuous parametric morph ∞ → O (zero swap)
  *   10.75–12.15 s locked radiant ring breathes across the resolving chord climax
  *   12.15–13.38 s graceful contraction to a warm point of light + silky dissolve
- *   13.38–14.16 s awaits `init_sound.mp3`'s natural reverb tail before handoff
+ *   13.38–14.20 s awaits `init_sound.m4a`'s natural reverb tail before handoff
  *
- * Click or press any key (except Cmd/Ctrl+Shift+M mute) to skip.
+ * Press Escape to skip.
  */
 const HELIX_START_MS = 180;
 const PRE_ROLL_MS = 1350;
@@ -38,23 +38,29 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     let cancelled = false;
     let finished = false;
-    let audio: HTMLAudioElement | null = null;
     let audioCtx: AudioContext | null = null;
+    let bufferSource: AudioBufferSourceNode | null = null;
+    let gainNode: GainNode | null = null;
     let analyser: AnalyserNode | null = null;
     let freqBuf: Uint8Array<ArrayBuffer> | null = null;
+    let audioStartTime: number | null = null;
     let audioPlaying = false;
     let loader: InfinityLoader | null = null;
 
+    if (sound.muted) {
+      sound.muted = false;
+    }
+
     const cleanupAudio = () => {
       audioPlaying = false;
-      if (audio) {
+      if (bufferSource) {
         try {
-          audio.pause();
-          audio.currentTime = 0;
+          bufferSource.stop();
+          bufferSource.disconnect();
         } catch {
           /* ignore */
         }
-        audio = null;
+        bufferSource = null;
       }
       if (audioCtx) {
         void audioCtx.close().catch(() => undefined);
@@ -62,6 +68,7 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
       }
       analyser = null;
       freqBuf = null;
+      gainNode = null;
     };
 
     const finish = () => {
@@ -74,24 +81,51 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
       onDoneRef.current();
     };
 
-    // `#preview=startup&motion` forces full motion (useful on Linux displays with reduced-motion).
-    const forceMotion = window.location.hash.includes("motion");
-    if (!forceMotion && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      if (veilRef.current) veilRef.current.style.opacity = "0";
-      if (markRef.current) markRef.current.style.opacity = "0.88";
-      const id = window.setTimeout(finish, 1800);
-      return () => window.clearTimeout(id);
-    }
+    let resolveAudioEnded!: () => void;
+    const audioEnded = new Promise<void>((resolve) => {
+      resolveAudioEnded = resolve;
+    });
+
+    // Start pre-decoding audio immediately on mount so it's ready by the end of pre-roll
+    const preparedAudioPromise = (async (): Promise<AudioBuffer | null> => {
+      if (!initSoundUrl) return null;
+      try {
+        const resp = await fetch(initSoundUrl);
+        const arrayBuf = await resp.arrayBuffer();
+        if (cancelled) return null;
+        const tempCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        const decoded = await tempCtx.decodeAudioData(arrayBuf);
+        void tempCtx.close().catch(() => undefined);
+        return decoded;
+      } catch {
+        return null;
+      }
+    })();
+
+    const unlockAudio = () => {
+      if (audioCtx && audioCtx.state === "suspended") {
+        void audioCtx.resume().then(() => {
+          if (audioStartTime === null && audioCtx) {
+            audioStartTime = audioCtx.currentTime;
+          }
+        });
+      }
+    };
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio, { passive: true });
+    window.addEventListener("click", unlockAudio, { passive: true });
+    window.addEventListener("touchstart", unlockAudio, { passive: true });
 
     const unsubMute = sound.onMuteChange((muted) => {
-      if (audio) audio.muted = muted;
+      if (gainNode) gainNode.gain.value = muted ? 0 : 1;
     });
 
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "m") return;
-      finish();
+      if (e.key === "Escape") {
+        finish();
+      }
     };
-    window.addEventListener("click", finish);
     window.addEventListener("keydown", onKeyDown);
 
     const safetyTimer = window.setTimeout(finish, SAFETY_TIMEOUT_MS);
@@ -101,14 +135,13 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
     });
 
     const getAudioTime = (): number | null => {
-      if (!audio || !audioPlaying || audio.paused || audio.ended) return null;
-      return audio.currentTime;
+      if (!audioCtx || !audioPlaying || audioCtx.state !== "running" || audioStartTime === null) return null;
+      return Math.max(0, audioCtx.currentTime - audioStartTime);
     };
 
     const getAudioEnergy = (): number => {
-      if (!analyser || !freqBuf || !audioPlaying || audio?.muted) return 0;
+      if (!analyser || !freqBuf || !audioPlaying || sound.muted || audioCtx?.state !== "running") return 0;
       analyser.getByteFrequencyData(freqBuf);
-      // Warm harmonic band (bins 2..48 of 128) captures the swells & chord peak cleanly.
       let sum = 0;
       const start = 2;
       const end = Math.min(48, freqBuf.length);
@@ -140,7 +173,6 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
       }
 
       loader.onRingLocked = () => {
-        // Fade the subtle wordmark out smoothly right as the ring contracts to a dot.
         if (!markRef.current) return;
         window.setTimeout(() => {
           if (cancelled || !markRef.current) return;
@@ -162,57 +194,42 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
       await delay(PRE_ROLL_MS);
       if (cancelled || !loader) return;
 
-      let resolveAudioEnded!: () => void;
-      const audioEnded = new Promise<void>((resolve) => {
-        resolveAudioEnded = resolve;
-      });
+      // Audio playback setup
+      try {
+        audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = sound.muted ? 0 : 1;
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.78;
+        freqBuf = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
 
-      if (initSoundUrl) {
-        audio = new Audio(initSoundUrl);
-        audio.preload = "auto";
-        audio.muted = sound.muted;
+        gainNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
 
-        // Wire AnalyserNode so the 3D filament & coral aura breathe live with the audio.
-        try {
-          audioCtx = new AudioContext();
-          const src = audioCtx.createMediaElementSource(audio);
-          analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 256;
-          analyser.smoothingTimeConstant = 0.78;
-          freqBuf = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
-          src.connect(analyser);
-          analyser.connect(audioCtx.destination);
-        } catch {
-          analyser = null;
-        }
+        const preloadedBuffer = await preparedAudioPromise;
+        if (cancelled || !audioCtx) return;
 
-        audio.addEventListener(
-          "ended",
-          () => {
+        if (preloadedBuffer) {
+          bufferSource = audioCtx.createBufferSource();
+          bufferSource.buffer = preloadedBuffer;
+          bufferSource.connect(gainNode);
+
+          bufferSource.onended = () => {
             audioPlaying = false;
             resolveAudioEnded();
-          },
-          { once: true },
-        );
-        audio.addEventListener(
-          "error",
-          () => {
-            audioPlaying = false;
-            resolveAudioEnded();
-          },
-          { once: true },
-        );
+          };
 
-        try {
-          await audioCtx?.resume().catch(() => undefined);
-          await audio.play();
+          void audioCtx.resume().catch(() => undefined);
+          bufferSource.start(0);
+          audioStartTime = audioCtx.currentTime;
           audioPlaying = true;
-        } catch {
-          audioPlaying = false;
+        } else {
+          sound.boot();
           resolveAudioEnded();
         }
-      } else {
-        // Public repo fallback when optional init_sound.mp3 is not present locally.
+      } catch {
+        // Safe fallback to WebAudio synthesized boot sound
         sound.boot();
         resolveAudioEnded();
       }
@@ -232,7 +249,10 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
       cancelled = true;
       window.clearTimeout(safetyTimer);
       unsubMute();
-      window.removeEventListener("click", finish);
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
       window.removeEventListener("keydown", onKeyDown);
       cleanupAudio();
       loader?.destroy();
@@ -276,12 +296,12 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
       />
       <div
         ref={markRef}
-        aria-label="OS1"
+        aria-label="MAVE1.0"
         style={{
           position: "fixed",
           left: 0,
           right: 0,
-          bottom: 58,
+          bottom: "clamp(24px, 6vh, 58px)",
           textAlign: "center",
           font: "200 32px/1 var(--font-sans)",
           letterSpacing: "0.04em",
@@ -291,7 +311,7 @@ export function StartupSequence({ onDone }: { onDone: () => void }) {
           pointerEvents: "none",
         }}
       >
-        OS<sup style={{ fontSize: 13, verticalAlign: "top", marginLeft: 1 }}>1</sup>
+        MAVE<sup style={{ fontSize: 13, verticalAlign: "top", marginLeft: 1 }}>1.0</sup>
       </div>
       <div
         ref={veilRef}

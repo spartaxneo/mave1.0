@@ -32,13 +32,13 @@ def voices() -> dict[str, Voice]:
     """Voice registry. Each LiveKit Agent gets its own TTS, so swapping voices mid-session
     (operator -> Samantha, or Voice I -> Voice II) is an agent handoff in the same room."""
     return {
-        # The onboarding operator: neutral, measured, clearly not Samantha.
+        # The onboarding operator: matches Samantha voice by default so the voice never changes after Hello.
         "operator": Voice(
             key="operator",
             label="Operator",
-            reference_id=_env("FISH_OPERATOR_VOICE_ID"),
-            speed=0.98,
-            temperature=0.55,
+            reference_id=_env("FISH_OPERATOR_VOICE_ID") or _env("FISH_VOICE_1_ID"),
+            speed=0.96,
+            temperature=0.72,
         ),
         "voice_1_warm": Voice(
             key="voice_1_warm",

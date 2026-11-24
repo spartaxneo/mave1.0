@@ -1,10 +1,16 @@
 {
   "name": "os1-her",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "npm run dev -w @os1/desktop",
     "build": "npm run build -w @os1/desktop",
     "typecheck": "npm run typecheck -w @os1/ui && npm run typecheck -w @os1/desktop"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1"
   }
 }

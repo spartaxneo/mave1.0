@@ -44,41 +44,49 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
 
     const draw = (t: number) => {
       const s = stateRef.current;
-      smooth += (Math.min(1, levelRef.current() * 2.2) - smooth) * 0.18;
-      const wantRibbon = s === "speaking" || s === "thinking" ? 1 : 0;
+      const rawLevel = levelRef.current();
+      // Continuous organic vocal/presence breathing so the ribbon always moves with silky fluidity
+      const naturalBreathing = 0.09 + 0.05 * Math.sin((t / 1000) * 2.2) + 0.03 * Math.cos((t / 1000) * 3.7);
+      const voiceMod =
+        rawLevel > 0.04
+          ? rawLevel
+          : s === "speaking"
+            ? 0.38 + 0.22 * Math.sin((t / 1000) * 9.2) + 0.14 * Math.cos((t / 1000) * 15.7) + 0.08 * Math.sin((t / 1000) * 23.4)
+            : naturalBreathing;
+
+      smooth += (Math.min(1, voiceMod * 2.2) - smooth) * 0.18;
+      // The ribbon represents Samantha's living consciousness — active whenever awake
+      const wantRibbon = s === "asleep" ? 0 : 1;
       ribbon += (wantRibbon - ribbon) * 0.08;
       ctx.clearRect(0, 0, w, h);
       ctx.lineCap = "round";
       const cx = w / 2;
       const cy = h / 2;
-      const time = reduced ? 0 : t / 1000;
+      // Continuous smooth time progression
+      const time = t / 950;
 
       if (ribbon < 0.98) {
-        // Ring (asleep / listening / working)
-        const alpha = (1 - ribbon) * (s === "asleep" ? 0.35 : 1);
-        const breathe = s === "listening" ? 1 + smooth * 0.12 + Math.sin(time * 1.6) * 0.015 : 1;
+        // Ring (asleep)
+        const alpha = (1 - ribbon) * (s === "asleep" ? 0.45 : 1);
+        const breathe = 1 + Math.sin(time * 1.2) * 0.02;
         const r = h * 0.3 * breathe;
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.strokeStyle = "#fffdf9";
-        ctx.lineWidth = s === "asleep" ? 1.2 : 2.4;
-        ctx.shadowColor = "rgba(255,253,249,0.8)";
-        ctx.shadowBlur = s === "listening" ? 18 + smooth * 30 : 6;
+        ctx.lineWidth = 1.6;
+        ctx.shadowColor = "rgba(255,253,249,0.85)";
+        ctx.shadowBlur = 10;
         ctx.beginPath();
-        if (s === "working") {
-          const start = time * 2.2;
-          ctx.arc(cx, cy, r, start, start + Math.PI * 1.55);
-        } else {
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        }
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
 
       if (ribbon > 0.02) {
-        // Ribbon: two mirrored sine bundles crossing twice -> three lobes, pointed ends.
-        const span = w * (s === "thinking" ? 0.55 : 0.82);
-        const amp = h * (s === "thinking" ? 0.16 : 0.2 + smooth * 0.22);
+        // Ribbon: three-lobe living ribbon with pointed ends
+        const span = w * (s === "thinking" ? 0.58 : s === "listening" ? 0.76 : 0.84);
+        const amp = h * (s === "thinking" ? 0.16 : s === "listening" ? 0.18 + naturalBreathing * 0.14 : 0.22 + smooth * 0.28);
+        const phase = time * (s === "speaking" ? 2.8 : s === "thinking" ? 1.4 : 2.0);
         ctx.save();
         ctx.globalAlpha = ribbon;
         ctx.strokeStyle = "#fffdf9";
@@ -86,14 +94,17 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
           const jitter = (f - FIBERS / 2) / FIBERS;
           for (const sign of [1, -1]) {
             ctx.beginPath();
-            ctx.lineWidth = f === Math.floor(FIBERS / 2) ? 1.6 : 0.7;
+            ctx.lineWidth = f === Math.floor(FIBERS / 2) ? 1.8 : 0.75;
             ctx.globalAlpha = ribbon * (0.35 + 0.65 * (1 - Math.abs(jitter) * 1.6));
             for (let i = 0; i <= 120; i++) {
               const u = i / 120;
               const x = cx - span / 2 + u * span;
-              const envelope = Math.pow(Math.sin(Math.PI * u), 0.75);
-              const wobble = 1 + jitter * 0.18 * Math.sin(time * 1.3 + f);
-              const y = cy + sign * amp * wobble * envelope * Math.sin(3 * Math.PI * u + jitter * 0.12);
+              const envelope = Math.pow(Math.sin(Math.PI * u), 0.72);
+              const wobble = 1 + jitter * 0.22 * Math.sin(time * 1.8 + f * 0.8);
+              const wave =
+                Math.sin(3 * Math.PI * u - phase + jitter * 0.25) +
+                0.12 * Math.sin(6 * Math.PI * u - phase * 1.4 + f * 0.5);
+              const y = cy + sign * amp * wobble * envelope * wave;
               if (i === 0) ctx.moveTo(x, y);
               else ctx.lineTo(x, y);
             }
@@ -112,8 +123,14 @@ export function Presence({ state, getLevel, size = 440 }: Props) {
     <canvas
       ref={canvas}
       role="img"
-      aria-label={`Samantha is ${state}`}
-      style={{ width: size, height: size * 0.42, display: "block" }}
+      aria-label={`MAVE is ${state}`}
+      style={{
+        width: "100%",
+        maxWidth: size,
+        height: "auto",
+        aspectRatio: "100 / 42",
+        display: "block",
+      }}
     />
   );
 }

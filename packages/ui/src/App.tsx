@@ -30,8 +30,10 @@ export function surfaceFor(state: Os1State, busSurface: ActiveSurface = "convers
   if (state.connection !== "connected") return "preflight";
   switch (state.phase) {
     case "preflight":
-    case "operator_welcome":
+      return "preflight";
+    case "boot":
       return "boot";
+    case "operator_welcome":
     case "operator_q1":
     case "operator_q1_hesitance":
     case "operator_q2":
@@ -39,8 +41,12 @@ export function surfaceFor(state: Os1State, busSurface: ActiveSurface = "convers
       return "setup";
     case "initiating":
       return "waking";
+    case "active":
+      return busSurface;
+    case "naming":
+      return "naming";
     default:
-      if (state.chips.includes("I love it")) return "naming";
+      if (state.chips.includes("Continue") || state.chips.includes("I love it") || state.chips.includes("Let's pick another") || state.chips.includes("Choose my own...")) return "naming";
       return busSurface;
   }
 }
@@ -59,23 +65,24 @@ function previewFixtures(): { state: Os1State; bus: Os1BusState } | null {
     phase,
     agentState: phase === "active" ? "speaking" : "listening",
     chips: naming
-      ? ["I love it", "Let's pick another"]
+      ? ["Continue"]
       : phase === "operator_q2"
         ? ["Female", "Male", "Surprise me"]
-        : ["Show me", "Hold on a sec", "Goodnight, Samantha"],
+        : ["Show me", "Hold on a sec", "Goodnight, MAVE"],
     work: [
       { id: "run_101", label: "Clean up inbox newsletters", status: "running" },
       { id: "run_102", label: "Compare ferries to Sausalito", status: "running" },
       { id: "run_103", label: "Check SF weather", status: "done" },
     ],
     voice: "voice_1_warm",
+    agentName: "MAVE",
     agentLine: naming
-      ? "Samantha. I just picked it. Do you like it?"
+      ? ""
       : phase === "operator_q2"
         ? "Next. Which voice should yours have: female or male?"
         : "I already went through it. Most of it was newsletters you never open. I kept the ones that made me laugh.",
     userLine: naming
-      ? "What do I call you?"
+      ? ""
       : phase === "operator_q2"
         ? "Female, I think."
         : "Can you look through my email for me?",
@@ -249,9 +256,19 @@ export function App({ config }: { config: Os1Config }) {
   const live = useOs1(config);
   const preview = previewFixtures();
   const { levels, connect, say } = live;
-  const state = preview?.state ?? live.state;
-  const bus = preview?.bus ?? live.bus;
-  const [previewSurface, setPreviewSurface] = useState<ActiveSurface | null>(preview ? preview.bus.activeSurface : null);
+
+  // If running with a #preview= hash, seed live state on mount once so all interactive actions work
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (preview && !seeded.current) {
+      seeded.current = true;
+      live.setState((s) => ({ ...s, ...preview.state }));
+      live.setBus((b) => ({ ...b, ...preview.bus }));
+    }
+  }, [preview, live]);
+
+  const state = live.state;
+  const bus = live.bus;
   const [booted, setBooted] = useState(() => Boolean(preview) && !window.location.hash.includes("preview=startup"));
   const [toast, setToast] = useState<string | null>(null);
   useSoundCues(state);
@@ -276,17 +293,27 @@ export function App({ config }: { config: Os1Config }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [live]);
 
-  const activeBusSurface = previewSurface ?? bus.activeSurface;
-  const surface: Surface = booted ? surfaceFor(state, activeBusSurface) : "startup";
+  const surface: Surface = booted ? surfaceFor(state, bus.activeSurface) : "startup";
 
   const onSelectSurface = (next: ActiveSurface) => {
     sound.tap();
-    if (preview) setPreviewSurface(next);
-    else live.setSurface(next);
+    live.setSurface(next);
   };
 
   const onSay = (phrase: string) => {
     sound.tap();
+    if (preview && (state.phase === "naming" || surface === "naming")) {
+      live.setState((s) => ({
+        ...s,
+        phase: "active",
+        agentName: "MAVE",
+        agentState: "speaking",
+        agentLine: "I'm MAVE. It's so lovely to meet you. I'm connected to your computer, files, and routines. What should we look at together?",
+        chips: ["Check my inbox", "What can you do?", "Look at my computer"],
+      }));
+      live.setBus((b) => ({ ...b, activeSurface: "conversation" }));
+      return;
+    }
     void say(phrase);
   };
 
@@ -301,9 +328,29 @@ export function App({ config }: { config: Os1Config }) {
       {surface !== "startup" && (
         <div key={surface} className="os1-surface">
           {surface === "preflight" && (
-            <Preflight onBegin={(name) => void connect(name)} busy={state.connection === "connecting"} error={state.error} />
+            <Preflight
+              onBegin={(name, storageDir) => void connect(name, storageDir)}
+              busy={state.connection === "connecting"}
+              error={state.error}
+              installerStatus={state.installerStatus}
+              installerPercent={state.installerPercent}
+              installerMessage={state.installerMessage}
+              installerReady={state.installerReady}
+              onCleanAndRetry={live.cleanAndRetry}
+            />
           )}
-          {surface === "boot" && <Boot levels={levels} />}
+          {surface === "boot" && (
+            <Boot
+              levels={levels}
+              installerStatus={state.installerStatus}
+              installerPercent={state.installerPercent}
+              installerComponent={state.installerComponent}
+              installerComponentLabel={state.installerComponentLabel}
+              installerMessage={state.installerMessage}
+              error={state.error}
+              onCleanAndRetry={live.cleanAndRetry}
+            />
+          )}
           {surface === "setup" && <Setup state={state} levels={levels} onSay={onSay} />}
           {surface === "waking" && <Waking levels={levels} />}
           {surface === "naming" && <Naming state={state} onSay={onSay} />}
@@ -320,7 +367,15 @@ export function App({ config }: { config: Os1Config }) {
             />
           )}
           {surface === "swarm" && (
-            <SwarmSurface runs={mergedRuns} onSay={onSay} onBack={() => onSelectSurface("conversation")} />
+            <SwarmSurface
+              runs={mergedRuns}
+              onSay={onSay}
+              onBack={() => onSelectSurface("conversation")}
+              onStartRun={live.startRun}
+              onStopRun={live.stopRun}
+              onClearDone={live.clearDoneRuns}
+              onDeleteRun={live.deleteRun}
+            />
           )}
           {surface === "inbox_cascade" && (
             <InboxSurface
@@ -346,6 +401,8 @@ export function App({ config }: { config: Os1Config }) {
               config={config}
               fetchVncSession={live.fetchVncSession}
               onBack={() => onSelectSurface("conversation")}
+              onAction={live.dispatchAction}
+              onSay={onSay}
             />
           )}
           {surface === "made_just_now" && (

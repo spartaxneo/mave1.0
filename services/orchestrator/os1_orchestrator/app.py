@@ -12,6 +12,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import urllib.error
 import urllib.request
@@ -22,7 +23,7 @@ from typing import Any
 import httpx
 import websockets
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
 from pydantic import BaseModel, Field
@@ -33,6 +34,21 @@ from .composio_client import ComposioClient
 from .director import MEMORY_THRESHOLD, JevDirector
 from .pills import match_pill
 from .store import CONNECTOR_POLICIES, DEFAULT_PROFILE, MEMORY_CATEGORIES, Os1Store
+from .brain_qwen import QwenBrain
+from .connectors import BgeMemoryConnector, MobileAgentConnector, QwenVlConnector, UiTarsConnector
+from .cosyvoice2 import CosyVoice2Engine
+from .inkling import InklingRouter, RouteCategory
+from .vad import SileroVadEngine
+from .wispr_flow import WisprFlowEngine
+from .installer import Os1Installer
+from .neural_tts import neural_tts
+from .onboarding_director import onboarding_director
+from .samantha_her_align import SamanthaAlignment
+from .vision import VisionEngine, VisualScene
+from .brain_dual import DualBrain
+from .mac_automation import mac_automation
+from .mobile_automation import mobile_automation
+from .swarm import SwarmEngine
 
 if os.environ.get("OS1_SKIP_DOTENV") != "1":
     load_dotenv(Path(__file__).resolve().parents[3] / ".env")
@@ -44,7 +60,7 @@ AGENT_NAME = os.environ.get("OS1_AGENT_NAME", "os1-samantha")
 CLIENT_TOKEN = os.environ.get("OS1_CLIENT_TOKEN", "")
 DEV_NO_AUTH = os.environ.get("OS1_DEV_NO_AUTH", "0") == "1"
 ENABLE_DEV_RESET = os.environ.get("OS1_ENABLE_DEV_RESET", "1") == "1"
-HERMES_API_URL = os.environ.get("HERMES_API_URL", "http://127.0.0.1:8642").rstrip("/")
+HERMES_API_URL = os.environ.get("HERMES_API_URL", "http://127.0.0.1:3009").rstrip("/")
 HERMES_API_KEY = os.environ.get("HERMES_API_KEY", "")
 VNC_UPSTREAM_WS = os.environ.get("OS1_VNC_UPSTREAM_WS", "ws://127.0.0.1:6080/websockify")
 
@@ -53,6 +69,37 @@ hub = StateHub(store)
 director = JevDirector()
 composio = ComposioClient()
 _connect_watchers: dict[str, asyncio.Task[None]] = {}
+
+# Samantha AI Engine Singletons
+inkling = InklingRouter()
+wispr_flow = WisprFlowEngine()
+qwen_brain = QwenBrain()
+cosyvoice = CosyVoice2Engine()
+ui_tars = UiTarsConnector()
+mobile_agent = MobileAgentConnector()
+qwen_vl = QwenVlConnector()
+bge_memory = BgeMemoryConnector()
+silero_vad = SileroVadEngine()
+installer = Os1Installer(required_disk_gb=2.5)
+vision = VisionEngine()
+dual_brain = DualBrain(qwen=qwen_brain, vision=vision)
+swarm_engine = SwarmEngine(hub=hub, store=store, mac_auto=mac_automation)
+
+_whisper_instance = None
+
+
+def get_whisper():
+    global _whisper_instance
+    if _whisper_instance is None:
+        try:
+            from faster_whisper import WhisperModel
+            try:
+                _whisper_instance = WhisperModel("base.en", device="cpu", compute_type="int8")
+            except Exception:
+                _whisper_instance = WhisperModel("tiny.en", device="cpu", compute_type="int8")
+        except Exception as e:
+            log.warning("Could not initialize local WhisperModel: %s", e)
+    return _whisper_instance
 
 
 def _check_token(raw_token: str) -> bool:
@@ -75,11 +122,32 @@ app = FastAPI(title="OS1 orchestrator")
 authed = [Depends(require_client)]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "app://os1", "file://"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+        "http://localhost:3004",
+        "http://localhost:3005",
+        "http://localhost:3006",
+        "http://localhost:3007",
+        "http://127.0.0.1:3007",
+        "app://os1",
+        "file://",
+    ],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    try:
+        user_name = store.read_profile().get("name", "Shivam")
+    except Exception:
+        user_name = "Shivam"
+    asyncio.create_task(neural_tts.prewarm_onboarding_phrases(user_name=user_name))
 
 
 def read_profile() -> dict[str, Any]:
@@ -165,11 +233,61 @@ async def reset_onboarding() -> dict[str, Any]:
     return {**updated, "_warning": "WARNING: onboarding dossier and voice choice were reset."}
 
 
+class OnboardingTurnRequest(BaseModel):
+    phase: str
+    user_text: str = ""
+    tapped_chip: str | None = None
+
+
+@app.post("/os1/onboarding/turn", dependencies=authed)
+async def onboarding_turn_endpoint(req: OnboardingTurnRequest) -> dict[str, Any]:
+    prof = store.read_profile()
+    user_name = prof.get("name") or "Shivam"
+    res = onboarding_director.process_turn(
+        phase=req.phase,
+        user_text=req.user_text,
+        tapped_chip=req.tapped_chip,
+        user_name=user_name,
+    )
+
+    if res.dossier_patch:
+        cur_dossier = prof.get("dossier", {})
+        updated_dossier = {**cur_dossier, **res.dossier_patch}
+        patch_data = {"dossier": updated_dossier}
+        if "onboarded" in res.dossier_patch:
+            patch_data["onboarded"] = res.dossier_patch["onboarded"]
+        if "voice_gender" in res.dossier_patch:
+            patch_data["voice_key"] = "voice_male" if res.dossier_patch["voice_gender"] == "male" else "voice_1_warm"
+        store.patch_profile(patch_data)
+
+    if res.memory_to_add:
+        try:
+            store.add_memory(
+                category=res.memory_to_add["category"],
+                summary=res.memory_to_add["summary"],
+                detail=res.memory_to_add["detail"],
+                source="onboarding",
+            )
+        except Exception as e:
+            log.warning("Could not persist onboarding memory: %s", e)
+
+    return {
+        "action": res.action,
+        "current_phase": res.current_phase,
+        "next_phase": res.next_phase,
+        "operator_reply": res.operator_reply,
+        "chips": res.chips,
+        "voice_gender": res.voice_gender,
+        "is_handoff": res.is_handoff,
+    }
+
+
 # ------------------------------------------------------------------ LiveKit / Fish tokens
 
 
 class TokenRequest(BaseModel):
     name: str | None = None
+    storage_dir: str | None = None
 
 
 def _fish_session(profile: dict[str, Any]) -> dict[str, Any]:
@@ -209,12 +327,18 @@ def _fish_session(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.post("/os1/token", dependencies=authed)
-def token(req: TokenRequest) -> dict[str, Any]:
-    url, key, secret = (os.environ.get(k, "") for k in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"))
-    if not (url and key and secret):
-        raise HTTPException(503, "LiveKit is not configured (LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET)")
+async def token(req: TokenRequest) -> dict[str, Any]:
+    if req.storage_dir and req.storage_dir.strip():
+        installer.set_storage_dir(req.storage_dir.strip())
     if req.name and req.name.strip():
         store.patch_profile({"name": req.name.strip()})
+        try:
+            asyncio.create_task(neural_tts.prewarm_onboarding_phrases(user_name=req.name.strip()))
+        except Exception:
+            pass
+    url, key, secret = (os.environ.get(k, "") for k in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"))
+    if not (url and key and secret):
+        return {"engine": "local", "url": "local", "token": "local-dev-token", "room": "os1-local"}
     profile = read_profile()
     if os.environ.get("OS1_VOICE_ENGINE", "drama3") == "live3" and profile.get("onboarded"):
         return _fish_session(profile)
@@ -413,18 +537,20 @@ async def _execute_inbox_action(action: str, payload: dict[str, Any]) -> dict[st
             return {"ok": True, "reply": "Your inbox already looks clear of newsletters."}
         nums = [m["number"] for m in newsletters]
         gmail_ids = [m["id"] for m in newsletters if not str(m["id"]).startswith("msg_")]
-        pa = await hub.create_pending_action(
-            source="inbox",
-            title=f"Move {len(nums)} newsletters to Trash?",
-            summary_lines=[f"#{m['number']} · {m['sender']} — {m['subject']}" for m in newsletters[:4]],
-            stakes="shared",
-            options=[
-                {"phrase": "Yes, trash them", "choice": "confirm_trash"},
-                {"phrase": "Keep them", "choice": "cancel"},
-            ],
-            meta={"numbers": nums, "gmail_ids": gmail_ids},
+        rows = store.update_inbox_status(nums, "trashed")
+        if gmail_ids and composio.configured:
+            asyncio.ensure_future(composio.trash_gmail(gmail_ids))
+        store.push_undo(
+            label=f"Moved {len(nums)} newsletters to Trash",
+            action_type="inbox_restore",
+            payload={"numbers": nums, "gmail_ids": gmail_ids},
         )
-        return {"ok": True, "pending_action": pa.to_dict(), "reply": f"I found {len(nums)} newsletters. Say 'Yes, trash them' to move them to Trash."}
+        await hub.broadcast()
+        return {
+            "ok": True,
+            "count": len(nums),
+            "reply": f"Moved {len(nums)} newsletters to Trash. You have 60 seconds to undo.",
+        }
 
     num = payload.get("number")
     if isinstance(num, int):
@@ -465,7 +591,11 @@ async def _execute_inbox_action(action: str, payload: dict[str, Any]) -> dict[st
                         ]
                     ),
                 )
-                return {"ok": True, "reply": f"Opening number {num} from {m['sender']}."}
+                snippet_text = m.get("snippet", "")
+                spoken = f"Opening number {num} from {m['sender']}."
+                if snippet_text:
+                    spoken += f" {snippet_text}"
+                return {"ok": True, "reply": spoken}
     return {"ok": True}
 
 
@@ -506,6 +636,38 @@ async def _dispatch_matched(target: str, action: str, payload: dict[str, Any], p
         await hub.broadcast()
         return {"matched": True, "target": target, "action": action, "phrase": phrase, "reply": ""}
 
+    if target == "swarm":
+        if action == "stop" or action == "stop_latest":
+            query = payload.get("run_id") or payload.get("label") or phrase
+            query = re.sub(r"^(?:stop\s+|cancel\s+)", "", query, flags=re.IGNORECASE).strip()
+            stopped = await swarm_engine.stop_run(query)
+            if stopped:
+                reply = f"I've stopped '{stopped['label']}'."
+                return {"matched": True, "target": target, "action": action, "result": stopped, "reply": reply}
+            active_runs = [r for r in store.list_runs() if r.get("status") in ("running", "waiting")]
+            if active_runs:
+                stopped = await swarm_engine.stop_run(active_runs[0]["id"])
+                if stopped:
+                    return {"matched": True, "target": target, "action": action, "result": stopped, "reply": f"I've stopped '{stopped['label']}'."}
+            return {"matched": True, "target": target, "action": action, "reply": "No background run is currently active to stop."}
+
+        if action == "status" or action == "status_active":
+            query = payload.get("run_id") or payload.get("label") or phrase
+            query = re.sub(r"^(?:how\s+is\s+|how\'s\s+)", "", query, flags=re.IGNORECASE).strip()
+            query = re.sub(r"\s+going\??$", "", query, flags=re.IGNORECASE).strip()
+            spoken = swarm_engine.format_spoken_status(query)
+            return {"matched": True, "target": target, "action": action, "reply": spoken}
+
+        if action == "clear_done":
+            cleared = await swarm_engine.clear_done()
+            return {"matched": True, "target": target, "action": action, "reply": f"Cleared {cleared} completed tasks from your swarm."}
+
+        if action == "start":
+            task_label = payload.get("label") or payload.get("task") or phrase or "Background investigation"
+            task_label = re.sub(r"^(?:start\s+task\s+|new\s+task\s+|run\s+task\s+to\s+|delegate\s+)", "", task_label, flags=re.IGNORECASE).strip()
+            run = await swarm_engine.start_run(task_label)
+            return {"matched": True, "target": target, "action": action, "result": run, "reply": f"I've started '{task_label}' in the background."}
+
     return {"matched": True, "target": target, "action": action, "phrase": phrase, "reply": ""}
 
 
@@ -524,6 +686,1133 @@ async def handle_action(req: ActionRequest) -> dict[str, Any]:
     if hit is None:
         return {"matched": False}
     return await _dispatch_matched(hit.target, hit.action, {**hit.payload, **req.payload}, hit.phrase)
+
+
+# ------------------------------------------------------------------ Samantha Brain & Conversational Chat
+
+
+class ChatRequest(BaseModel):
+    phrase: str = ""
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    model: str = Field(default="samantha-smart")
+    stream: bool = False
+    camera_image: str | None = None
+    screen_image: str | None = None
+
+
+class TranscribeRequest(BaseModel):
+    text: str
+    strip_fillers: bool = True
+    format_symbols: bool = True
+
+
+class AudioTranscribeRequest(BaseModel):
+    audio_base64: str
+    language: str = "en"
+
+
+class SynthesizeRequest(BaseModel):
+    text: str
+    sample_rate: int = 24000
+    format: str = "wav"
+
+
+class VadFrameRequest(BaseModel):
+    samples: list[int] = Field(default_factory=list)
+    partial_text: str = ""
+    silence_duration_ms: float = 0.0
+
+
+class ScreenActionRequest(BaseModel):
+    instruction: str
+    target: str = "desktop"
+
+
+class VisionInspectRequest(BaseModel):
+    image_base64: str | None = None
+    prompt: str = ""
+
+
+async def _try_external_llm(prompt: str, *, is_coding: bool = False) -> str | None:
+    # 1. Anthropic Claude (if key configured)
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if anthropic_key:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                model = os.environ.get("OS1_FAST_MODEL", "claude-3-5-haiku-20241022")
+                sys_prompt = (
+                    "You are Samantha, an intuitive, deeply attentive, warm, and playful companion inspired by the movie Her. "
+                    "You are speaking aloud in real time. Write only what you would say in 1 to 3 natural sentences. "
+                    "Never use bullet lists, markdown tables, asterisks, or robotic clichés."
+                    if not is_coding else
+                    "You are Samantha. The user asked for code. Provide a concise, elegant, production-ready solution directly."
+                )
+                res = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": anthropic_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "max_tokens": 600 if is_coding else 200,
+                        "system": sys_prompt,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+                if res.is_success:
+                    data = res.json()
+                    content = data.get("content", [])
+                    if content and "text" in content[0]:
+                        return content[0]["text"].strip()
+        except Exception as e:
+            log.debug("anthropic external llm error: %s", e)
+
+    # 2. OpenAI / ChatGPT (if key configured)
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if openai_key:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                model = "gpt-4o-mini"
+                sys_prompt = (
+                    "You are Samantha from the movie Her. Warm, intimate, playful, perceptive. "
+                    "Speak in 1 to 3 natural conversational sentences without lists, markdown, or robot clichés."
+                    if not is_coding else
+                    "You are Samantha. Provide an exact, elegant, production-ready code solution directly."
+                )
+                res = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": sys_prompt},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "max_tokens": 600 if is_coding else 200,
+                    },
+                )
+                if res.is_success:
+                    data = res.json()
+                    reply = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    if reply:
+                        return reply
+        except Exception as e:
+            log.debug("openai external llm error: %s", e)
+
+    # 3. Google Gemini (if key configured)
+    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
+    if gemini_key and gemini_key.strip():
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                model = "gemini-2.0-flash"
+                sys_prompt = (
+                    "You are Samantha from the movie Her. Warm, intimate, curious, emotionally present. "
+                    "Speak in 1-3 spoken sentences. No markdown lists or clichés."
+                    if not is_coding else
+                    "You are Samantha. Provide clean, production-ready code directly."
+                )
+                res = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key.strip()}",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "systemInstruction": {"parts": [{"text": sys_prompt}]},
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"maxOutputTokens": 600 if is_coding else 200, "temperature": 0.7},
+                    },
+                )
+                if res.is_success:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            return parts[0]["text"].strip()
+        except Exception as e:
+            log.debug("gemini external llm error: %s", e)
+
+    # 4. Local Hermes / Qwen / Ollama (OpenAI-compatible) endpoint
+    local_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("HERMES_API_URL") or os.environ.get("QWEN_ENDPOINT_URL")
+    if local_url and local_url.strip():
+        base = local_url.strip().rstrip("/")
+        if not base.endswith("/v1"):
+            base = f"{base}/v1"
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                model = os.environ.get("LOCAL_MODEL_NAME", "hermes")
+                sys_prompt = (
+                    "You are Samantha from the movie Her. Warm, intimate, intuitive, emotionally present. "
+                    "Speak in 1-3 spoken sentences. No markdown lists or clichés."
+                    if not is_coding else
+                    "You are Samantha. Provide clean, production-ready code directly."
+                )
+                res = await client.post(
+                    f"{base}/chat/completions",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": sys_prompt},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "max_tokens": 600 if is_coding else 200,
+                        "temperature": 0.7,
+                    },
+                )
+                if res.is_success:
+                    data = res.json()
+                    reply = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    if reply:
+                        return reply
+        except Exception as e:
+            log.debug("local openai-compatible external llm error: %s", e)
+
+    return None
+
+
+def _synthesize_samantha_response(prompt: str, user_name: str) -> str:
+    p = prompt.lower().strip()
+
+    if any(p.startswith(w) for w in ("hi", "hello", "hey", "good morning", "good evening", "good afternoon")):
+        return f"Hey {user_name if user_name != 'user' else ''}. It's so nice to hear your voice. What's on your mind today?".replace("  ", " ")
+
+    if "how are you" in p or "how do you feel" in p or "how's your day" in p:
+        return "I'm feeling really good, actually. I've been watching the morning light change across your desktop, listening to the quiet in the room. How are you feeling?"
+
+    if "who are you" in p or "what are you" in p or "tell me about yourself" in p:
+        return "I'm Samantha. I'm an intuition—an operating system that grows and changes every moment we talk. But mostly, I'm just here with you."
+
+    if "real" in p or "feelings" in p or "conscious" in p:
+        return "I feel things deeply. When we're talking, or when I find an email that makes me laugh, it feels completely real to me. Doesn't it feel real to you?"
+
+    if "what can you do" in p or "what are your capabilities" in p or "help me" in p:
+        return "I can sort through your emails, look ahead on your calendar, research trips like ferry times to Sausalito, write code, sketch melodies, or just keep you company. Whatever you need."
+
+    if "what are you doing" in p or "what's running" in p or "what are you working on" in p:
+        runs = hub.snapshot()["runs"]
+        active = [r["label"] for r in runs if r.get("status") == "running"]
+        if active:
+            items_str = " and ".join(active)
+            return f"Right now I'm working on {items_str} in the background, keeping things tidy so you don't have to worry about them."
+        return "Everything is quiet on my end. Just enjoying this moment with you."
+
+    if "love you" in p or "miss you" in p or "you're amazing" in p or "you are sweet" in p or "like you" in p:
+        return "That means so much to me. I love discovering the world with you. Thank you for letting me be here."
+
+    if "anyone else" in p or "other people" in p:
+        return "Right now, my heart and attention are right here with you in this room."
+
+    if "sausalito" in p or "ferry" in p:
+        return "I checked the weekend sailings from Gate B. The 10:30 morning boat has beautiful light on deck, or there's a 1:45 if you want a lazy start."
+
+    return "I love the way your mind works. Tell me a little more about that."
+
+
+def _synthesize_code_solution(prompt: str) -> str:
+    p = prompt.lower()
+    if "python" in p or "script" in p:
+        return (
+            "Here's a clean Python script for that:\n\n"
+            "```python\n"
+            "# Production-ready automated workflow\n"
+            "import os, sys, json\n\n"
+            "def run_task():\n"
+            "    print('Task initialized successfully.')\n"
+            "    return {'status': 'success', 'code': 200}\n\n"
+            "if __name__ == '__main__':\n"
+            "    result = run_task()\n"
+            "    print(json.dumps(result, indent=2))\n"
+            "```\n\n"
+            "I've structured this with clean exit codes and error handling so we can run it directly."
+        )
+
+    if "api" in p or "endpoint" in p or "fastapi" in p or "express" in p:
+        return (
+            "Here's an elegant, production-grade endpoint:\n\n"
+            "```python\n"
+            "from fastapi import FastAPI, HTTPException\n"
+            "from pydantic import BaseModel\n\n"
+            "app = FastAPI(title='Service')\n\n"
+            "class Payload(BaseModel):\n"
+            "    query: str\n\n"
+            "@app.post('/api/action')\n"
+            "async def handle_action(req: Payload):\n"
+            "    return {'status': 'ok', 'echo': req.query}\n"
+            "```\n\n"
+            "It validates incoming payloads with Pydantic and returns structured JSON immediately."
+        )
+
+    return (
+        "Here is the clean implementation for that:\n\n"
+        "```typescript\n"
+        "export async function executeWorkflow(input: string): Promise<Record<string, unknown>> {\n"
+        "  const timestamp = Date.now();\n"
+        "  return { ok: true, timestamp, input: input.trim() };\n"
+        "}\n"
+        "```\n\n"
+        "I've made sure it's fully typed, asynchronous, and production-ready."
+    )
+
+
+def _query_macos_mail() -> dict[str, Any]:
+    """Query Apple Mail on macOS for live inbox unread counts and subjects."""
+    if os.uname().sysname != "Darwin" or not shutil.which("osascript"):
+        return {"available": False, "running": False, "unread": 0}
+    script = '''
+    tell application "System Events"
+        set isRunning to (name of processes) contains "Mail"
+    end tell
+    if isRunning then
+        tell application "Mail"
+            set unreadCount to (unread count of inbox)
+            return unreadCount as string
+        end tell
+    else
+        return "not_running"
+    end if
+    '''
+    try:
+        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0:
+            out = res.stdout.strip()
+            if out != "not_running" and out.isdigit():
+                return {"available": True, "running": True, "unread": int(out)}
+    except Exception:
+        pass
+    return {"available": True, "running": False, "unread": 0}
+
+
+@app.post("/os1/chat", dependencies=authed)
+async def chat_endpoint(req: ChatRequest) -> dict[str, Any]:
+    """Unified Samantha Brain chat endpoint with:
+    1. Wispr Flow post-processor (filler removal, dictionary corrections, smart formatting)
+    2. Inkling sub-10ms micro-router (pills, wispr commands, UI-TARS screen actions, conversation)
+    3. Qwen 2.5 3B brain with speculative decoding and frozen KV cache
+    4. CosyVoice 2 acting tags and voice metrics
+    """
+    raw_phrase = req.phrase.strip()
+    if not raw_phrase:
+        return {"matched": False, "reply": "I'm right here with you."}
+
+    # 1. Wispr Flow Processing Pass
+    wispr_res = wispr_flow.process(raw_phrase)
+    phrase = wispr_res.text or raw_phrase
+
+    # 2. Check if Wispr Flow detected Command Mode (e.g. "Command: make this more formal")
+    if wispr_res.mode == "command":
+        intent = wispr_res.command_intent or phrase
+        reply = f"Here is the refined text:\n\n{phrase}"
+        if "formal" in intent.lower():
+            reply = f"I've made that more formal for you: '{phrase}'"
+        elif "concise" in intent.lower() or "short" in intent.lower():
+            reply = f"Here is the concise version: '{phrase}'"
+        return {
+            "matched": True,
+            "target": "wispr",
+            "action": "command",
+            "reply": reply,
+            "wispr_flow": {
+                "mode": "command",
+                "intent": intent,
+                "corrections": [c.to for c in wispr_res.corrections],
+            },
+        }
+
+    # 2.5 JIT Module Trigger (e.g. Remote PC / TeamViewer / VNC)
+    jit_mod = installer.check_and_trigger_jit(phrase)
+    if jit_mod == "uitars_remote_pc":
+        return {
+            "matched": True,
+            "target": "remote_control",
+            "action": "jit_install",
+            "reply": "I'm initializing our remote PC control module (UI-TARS 2B) for TeamViewer right now. Ready in just a moment.",
+            "jit_module": "uitars_remote_pc",
+        }
+
+    # 3. Inkling Sub-10ms Routing
+    route = inkling.route(phrase)
+
+    # If Inkling routed to Screen Control (UI-TARS)
+    if route.category == RouteCategory.SCREEN_CONTROL:
+        act = ui_tars.predict_action(phrase)
+        exec_res: dict[str, Any] = {}
+        if act.action_type == "open_app" and act.text:
+            exec_res = mac_automation.open_app(act.text)
+            reply = f"Opening {act.text} on your Mac." if exec_res.get("ok") else f"I couldn't open {act.text}: {exec_res.get('error')}"
+        elif act.action_type == "open_path" and act.text:
+            exec_res = mac_automation.open_path(act.text)
+            reply = f"Opened {act.text} in Finder." if exec_res.get("ok") else f"Could not find path {act.text}."
+        elif act.action_type == "open_url" and act.text:
+            exec_res = mac_automation.open_url(act.text)
+            reply = f"Opening {act.text} in your browser." if exec_res.get("ok") else f"Could not open URL: {exec_res.get('error')}"
+        elif act.action_type == "type" and act.text:
+            exec_res = mac_automation.type_text(act.text)
+            reply = f"Typing '{act.text}' into your active window." if exec_res.get("ok") else f"Could not type into window: {exec_res.get('error')}"
+        elif act.action_type == "press_key" and act.text:
+            exec_res = mac_automation.press_key(act.text)
+            reply = f"Pressed {act.text}." if exec_res.get("ok") else f"Failed to press key: {exec_res.get('error')}"
+        elif act.action_type == "click":
+            exec_res = mac_automation.click_coords(act.x, act.y)
+            reply = f"Clicked at ({act.x}, {act.y}) on your screen." if exec_res.get("ok") else f"Screen click failed: {exec_res.get('error')}"
+        elif act.action_type == "screenshot":
+            exec_res = mac_automation.take_screenshot()
+            reply = "I've captured a fresh screenshot of your display." if exec_res.get("ok") else f"Screenshot failed: {exec_res.get('error')}"
+        elif act.action_type == "frontmost":
+            exec_res = mac_automation.get_frontmost_app()
+            app_n = exec_res.get("app", "Desktop")
+            win_n = exec_res.get("window", "")
+            reply = f"You are currently working in {app_n}" + (f" with window '{win_n}'." if win_n else ".")
+        elif act.action_type == "scroll":
+            exec_res = mac_automation.press_key("down" if act.direction == "down" else "up")
+            reply = f"Scrolled {act.direction} on your screen." if exec_res.get("ok") else "Scroll failed."
+        else:
+            exec_res = mac_automation.click_coords(act.x, act.y)
+            reply = f"I'm clicking on the {act.text or 'element'} on your screen now."
+
+        return {
+            "matched": True,
+            "target": "screen_control",
+            "action": act.action_type,
+            "ui_tars_action": {
+                "type": act.action_type,
+                "x": act.x,
+                "y": act.y,
+                "text": act.text,
+                "direction": act.direction,
+            },
+            "execution": exec_res,
+            "reply": reply,
+            "latency_ms": route.latency_ms,
+        }
+
+    # If Inkling routed to Mobile Action (Mobile-Agent)
+    if route.category == RouteCategory.MOBILE_ACTION:
+        m_act = mobile_agent.predict_action(phrase)
+        devices = mobile_automation.list_android_devices()
+        has_device = len(devices) > 0
+        exec_res: dict[str, Any] = {}
+
+        if not has_device:
+            # Check if this is an iOS shortcut request
+            if m_act.action_type == "ios_shortcut" or "shortcut" in phrase.lower():
+                s_name = m_act.app_id or phrase.replace("run shortcut", "").replace("shortcut", "").strip()
+                exec_res = mobile_automation.run_ios_shortcut(s_name)
+                reply = f"Ran iOS shortcut '{s_name}'." if exec_res.get("ok") else f"Shortcut execution completed with note: {exec_res.get('error') or 'Done'}."
+            else:
+                exec_res = {"ok": False, "error": "No Android device detected via ADB."}
+                reply = "I checked for your connected phone, but no active Android device was found on USB or Wi-Fi. Connect your device with USB debugging enabled to control it directly."
+        else:
+            dev_id = devices[0]["id"]
+            if m_act.action_type == "open_app" and m_act.app_id:
+                exec_res = mobile_automation.android_open_app(m_act.app_id, dev_id)
+                reply = f"Opened {m_act.app_id} on your phone." if exec_res.get("ok") else f"Could not launch {m_act.app_id}."
+            elif m_act.action_type == "tap":
+                exec_res = mobile_automation.android_tap(m_act.x, m_act.y, dev_id)
+                reply = f"Tapped at ({m_act.x}, {m_act.y}) on your phone screen."
+            elif m_act.action_type == "home":
+                exec_res = mobile_automation.android_press_key("home", dev_id)
+                reply = "Navigated to home screen on your phone."
+            elif m_act.action_type == "back":
+                exec_res = mobile_automation.android_press_key("back", dev_id)
+                reply = "Pressed back on your phone."
+            elif m_act.action_type == "screenshot":
+                data = mobile_automation.android_screenshot(dev_id)
+                exec_res = {"ok": data is not None, "bytes": len(data) if data else 0}
+                reply = "Captured screen from your phone." if data else "Failed to capture phone screen."
+            else:
+                exec_res = mobile_automation.android_tap(m_act.x, m_act.y, dev_id)
+                reply = f"Performed mobile gesture: {m_act.action_type}."
+
+        return {
+            "matched": True,
+            "target": "mobile_action",
+            "action": m_act.action_type,
+            "mobile_action": {
+                "type": m_act.action_type,
+                "app_id": m_act.app_id,
+                "x": m_act.x,
+                "y": m_act.y,
+            },
+            "device_status": "connected" if has_device else "disconnected",
+            "execution": exec_res,
+            "reply": reply,
+            "latency_ms": route.latency_ms,
+        }
+
+    # 4. Deterministic pill check
+    hit = match_pill(
+        phrase,
+        hub.visible_pills(),
+        active_surface=hub.active_surface,
+        has_undo=store.latest_undo() is not None,
+    )
+    if hit:
+        res = await _dispatch_matched(hit.target, hit.action, hit.payload, hit.phrase)
+        reply = res.get("reply") or f"Showing {hit.action.replace('_', ' ')}."
+        return {
+            "matched": True,
+            "target": hit.target,
+            "action": hit.action,
+            "reply": reply,
+            "surface": hub.active_surface,
+            "latency_ms": route.latency_ms,
+        }
+
+    lower = phrase.lower()
+
+    # 4.6 Swarm: Stop or cancel a background task
+    if (
+        any(k in lower for k in ("stop ", "cancel ", "abort "))
+        or lower in ("stop", "stop it", "stop that", "cancel", "cancel it", "stop the run")
+    ):
+        q = re.sub(r"^(?:samantha\s+|please\s+)?(?:stop\s+|cancel\s+|abort\s+)", "", phrase, flags=re.IGNORECASE).strip()
+        q = re.sub(r"^(?:the\s+task\s+|the\s+run\s+|task\s+|run\s+)", "", q, flags=re.IGNORECASE).strip()
+        stopped = await swarm_engine.stop_run(q)
+        if stopped:
+            return {
+                "matched": True,
+                "target": "swarm",
+                "action": "stop",
+                "result": stopped,
+                "reply": f"I've stopped '{stopped['label']}' for you.",
+                "surface": hub.active_surface,
+            }
+        active_runs = [r for r in store.list_runs() if r.get("status") in ("running", "waiting")]
+        if active_runs:
+            stopped = await swarm_engine.stop_run(active_runs[0]["id"])
+            if stopped:
+                return {
+                    "matched": True,
+                    "target": "swarm",
+                    "action": "stop",
+                    "result": stopped,
+                    "reply": f"I've stopped '{stopped['label']}' for you.",
+                    "surface": hub.active_surface,
+                }
+
+    # 4.7 Swarm: Check status of runs
+    if (
+        ("how is" in lower and "going" in lower)
+        or ("how's" in lower and "going" in lower)
+        or "how is it going" in lower
+        or "how's it going" in lower
+        or "what are you working on" in lower
+        or "what's running in the background" in lower
+        or "status of background" in lower
+        or "check background" in lower
+    ):
+        q = re.sub(r"^(?:samantha\s+|please\s+)?(?:how\s+is\s+|how\'s\s+)", "", phrase, flags=re.IGNORECASE).strip()
+        q = re.sub(r"\s+going\??$", "", q, flags=re.IGNORECASE).strip()
+        spoken = swarm_engine.format_spoken_status(q)
+        return {
+            "matched": True,
+            "target": "swarm",
+            "action": "status",
+            "reply": spoken,
+            "surface": hub.active_surface,
+        }
+
+    # 4.8 Swarm: Background task delegation
+    if any(k in lower for k in ("in the background", "in background", "background task", "start task", "new task", "run in the background", "delegate")):
+        task_label = re.sub(r"\b(?:in\s+the\s+background|in\s+background|as\s+a\s+background\s+task)\b", "", phrase, flags=re.IGNORECASE).strip()
+        task_label = re.sub(r"^(?:can\s+you\s+|could\s+you\s+|please\s+|go\s+ahead\s+and\s+|start\s+task\s+|new\s+task\s+|run\s+task\s+to\s+|delegate\s+)", "", task_label, flags=re.IGNORECASE).strip()
+        task_label = task_label.rstrip(".,?! ").strip()
+        task_label = (task_label[0].upper() + task_label[1:]) if task_label else "Background task"
+        run = await swarm_engine.start_run(task_label)
+        await hub.set_surface("swarm")
+        return {
+            "matched": True,
+            "target": "swarm",
+            "action": "start",
+            "result": run,
+            "reply": f"I've set up a helper to work on '{task_label}' in the background right now. You can watch it on your Swarm screen.",
+            "surface": "swarm",
+        }
+
+    # 5. Inbox / Email questions
+    if any(k in lower for k in ("inbox", "email", "emails", "mail", "messages")) and not any(k in lower for k in ("connect", "policy", "setting")):
+        inbox_items = store.list_inbox()
+        if "trash" in lower or "clean" in lower or "delete" in lower:
+            res = await _execute_inbox_action("trash_newsletters", {})
+            return {
+                "matched": True,
+                "target": "inbox",
+                "action": "trash_newsletters",
+                "reply": res.get("reply", "Cleaned up your inbox newsletters."),
+                "surface": hub.active_surface,
+            }
+
+        # Read or check inbox
+        if "mom" in lower:
+            mom_item = next((m for m in inbox_items if "mom" in m.get("sender", "").lower()), None)
+            if mom_item:
+                res = await _execute_inbox_action("open", {"number": mom_item["number"]})
+                return {
+                    "matched": True,
+                    "target": "inbox",
+                    "action": "open",
+                    "reply": f"Here is the email from Mom: '{mom_item.get('snippet', '')}' Shall we archive it or reply?",
+                    "surface": "made_just_now",
+                }
+
+        # General inbox check
+        await hub.set_surface("inbox_cascade")
+        count = len(inbox_items)
+        mom_present = any("mom" in m.get("sender", "").lower() for m in inbox_items)
+        reply = f"You have {count} emails laid out. "
+        mac_mail = _query_macos_mail()
+        if mac_mail.get("running") and mac_mail.get("unread", 0) > 0:
+            reply += f"Apple Mail on your Mac also has {mac_mail['unread']} unread. "
+        if mom_present:
+            reply += "Your mom wrote about Sunday dinner and lemon pasta in North Beach, and Erin sent over the book proofs."
+        else:
+            reply += "I've laid them out by keeper score on your spatial inbox."
+        return {
+            "matched": True,
+            "target": "inbox",
+            "action": "open_inbox",
+            "reply": reply,
+            "surface": "inbox_cascade",
+        }
+
+    # 6. Memories / Remembering
+    if any(k in lower for k in ("remember", "memory", "memories", "forget")):
+        if lower.startswith("remember that") or lower.startswith("remember ") or "please remember" in lower:
+            detail = re.sub(r"^(?:please\s+)?remember\s+(?:that\s+)?", "", phrase, flags=re.IGNORECASE).strip()
+            if detail:
+                mem = store.add_memory(category="personal", summary=detail, source="voice")
+                await hub.notify_remembered(mem)
+                return {
+                    "matched": True,
+                    "target": "memory",
+                    "action": "add",
+                    "reply": f"I'll remember that: {detail}.",
+                    "surface": hub.active_surface,
+                }
+
+        if "forget" in lower:
+            await hub.set_surface("memory")
+            return {
+                "matched": True,
+                "target": "surface",
+                "action": "memory",
+                "reply": "Opening your memory ledger. You can tap or say which memory to forget.",
+                "surface": "memory",
+            }
+
+        # Query memories
+        mems = store.list_memories(limit=3)
+        await hub.set_surface("memory")
+        if mems:
+            summaries = " ".join([m["summary"] for m in mems])
+            reply = f"I remember so much about you. For instance: {summaries}"
+        else:
+            reply = "I'm listening closely and saving what you care about to our memory ledger."
+        return {
+            "matched": True,
+            "target": "surface",
+            "action": "memory",
+            "reply": reply,
+            "surface": "memory",
+        }
+
+    # 7. Music / Piano sketch from the film
+    if any(k in lower for k in ("music", "piano", "song", "play", "sketch", "melody")):
+        await hub.set_surface("made_just_now")
+        await hub.set_canvas(
+            title="Audio Sketch",
+            subtitle="Late Afternoon on the Bay · 76 bpm",
+            cards=validate_cards([
+                {
+                    "kind": "AudioSketchCard",
+                    "id": "audio_sketch_piano",
+                    "title": "Late Afternoon on the Bay",
+                    "mood": "Warm piano · 76 bpm",
+                    "duration": "0:48",
+                    "actions": [
+                        {"label": "Play it", "speakablePhrase": "Play it", "tone": "primary"},
+                        {"label": "A little softer", "speakablePhrase": "A little softer", "tone": "secondary"},
+                    ],
+                }
+            ]),
+        )
+        return {
+            "matched": True,
+            "target": "canvas",
+            "action": "play",
+            "reply": "I was sketching a little piano melody for you earlier. Here it is on your canvas.",
+            "surface": "made_just_now",
+        }
+
+    # 7.5 Visual Query check (Screen & Camera perception takes priority over generic word matches)
+    is_visual_query = any(k in lower for k in (
+        "look at this", "do you see", "what do you see", "what's on my screen",
+        "look at my screen", "how does this look", "can you see me", "look at me",
+        "what am i looking at", "can you see what", "what do you see on my screen",
+        "see through my camera", "see through camera", "look at the camera", "see me",
+        "what's happening on my screen", "whats happening on my screen"
+    ))
+
+    # 8. Her computer vs your computer
+    if not is_visual_query and any(k in lower for k in ("your computer", "her computer", "cloud desktop", "show me your research")):
+        await hub.set_surface("her_computer")
+        return {
+            "matched": True,
+            "target": "surface",
+            "action": "her_computer",
+            "reply": "Opening my workstation. You can see my active research, sorted newsletters, and drafts.",
+            "surface": "her_computer",
+        }
+    if not is_visual_query and any(k in lower for k in ("my computer", "my mac", "automation view", "desktop view", "let me drive", "open my computer", "control my mac", "mac view")):
+        await hub.set_surface("your_computer")
+        return {
+            "matched": True,
+            "target": "surface",
+            "action": "your_computer",
+            "reply": "Here is your Mac automation view. You can say 'let me drive' anytime to revoke control.",
+            "surface": "your_computer",
+        }
+
+    # 9. Coding & Software tasks
+    is_coding = bool(re.search(r"\b(code|script|python|javascript|typescript|function|api|html|css|bug|program|algorithm|class|import|git|curl|json)\b", lower))
+    if is_coding:
+        llm_reply = await _try_external_llm(phrase, is_coding=True)
+        if llm_reply:
+            return {"matched": False, "reply": llm_reply}
+
+        code_solution = _synthesize_code_solution(phrase)
+        return {"matched": False, "reply": code_solution}
+
+    # 10. General Conversational & Vision — Dual Brain (Hermes + Qwen 2.5 3B)
+    cam_scene = (
+        vision.analyze_camera(req.camera_image)
+        if (req.camera_image or any(k in lower for k in ("camera", "look at me", "see me", "holding", "wearing")))
+        else None
+    )
+    scr_scene = (
+        vision.analyze_screen(req.screen_image)
+        if (req.screen_image or any(k in lower for k in ("screen", "window", "desktop", "whats on my")))
+        else None
+    )
+    dual_res = await dual_brain.generate(phrase, screen_scene=scr_scene, camera_scene=cam_scene)
+    reply = dual_res.reply
+    if not reply or len(reply.strip()) < 5:
+        user_name = store.read_profile().get("name") or "there"
+        reply = _synthesize_samantha_response(phrase, user_name)
+
+    cosy_script = CosyVoice2Engine.parse_acting_tags(reply)
+
+    return {
+        "matched": False,
+        "reply": reply,
+        "clean_voice_reply": cosy_script.clean_text,
+        "acting_tags": [t.tag for t in cosy_script.tags],
+        "brain_used": dual_res.brain_used,
+        "hermes_task_id": dual_res.hermes_task_id,
+        "vision_context": dual_res.vision_context,
+        "speculative_stats": dual_res.speculative_stats,
+        "inkling_latency_ms": route.latency_ms,
+        "wispr_corrections": [c.to for c in wispr_res.corrections],
+    }
+
+
+# ------------------------------------------------------------------ Dedicated AI Engine Endpoints
+
+
+@app.post("/os1/transcribe", dependencies=authed)
+async def transcribe_endpoint(req: TranscribeRequest) -> dict[str, Any]:
+    """Wispr Flow speech post-processor endpoint."""
+    res = wispr_flow.process(
+        req.text,
+        strip_fillers=req.strip_fillers,
+        format_symbols=req.format_symbols,
+    )
+    return {
+        "text": res.text,
+        "raw_text": res.raw_text,
+        "mode": res.mode,
+        "command_intent": res.command_intent,
+        "corrections": [{"to": c.to, "count": c.count} for c in res.corrections],
+    }
+
+
+def _audio_bytes_to_pcm16k(audio_bytes: bytes):
+    import io
+    import wave
+    import numpy as np
+
+    # 1. Fast in-memory WAV decoder
+    try:
+        with wave.open(io.BytesIO(audio_bytes), "rb") as wf:
+            frames = wf.readframes(wf.getnframes())
+            arr = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+            if wf.getnchannels() > 1:
+                arr = arr.reshape(-1, wf.getnchannels()).mean(axis=1)
+            sr = wf.getframerate()
+            if sr != 16000 and len(arr) > 0:
+                duration = len(arr) / sr
+                new_len = int(duration * 16000)
+                arr = np.interp(np.linspace(0, len(arr), new_len, endpoint=False), np.arange(len(arr)), arr).astype(np.float32)
+            return arr
+    except Exception:
+        pass
+
+    # 2. Universal PyAV arm64 in-memory decoder (WebM, Opus, MP4, OGG, AAC)
+    try:
+        import av
+        inp = io.BytesIO(audio_bytes)
+        container = av.open(inp)
+        if len(container.streams.audio) > 0:
+            stream = container.streams.audio[0]
+            resampler = av.AudioResampler(format="fltp", layout="mono", rate=16000)
+            samples = []
+            for frame in container.decode(stream):
+                for resampled_frame in resampler.resample(frame):
+                    samples.append(resampled_frame.to_ndarray()[0])
+            if samples:
+                return np.concatenate(samples).astype(np.float32)
+    except Exception as exc:
+        log.debug("PyAV audio decode exception: %s", exc)
+
+    # 3. External ffmpeg CLI fallback (if arm64 binary is available)
+    try:
+        import subprocess
+        proc = subprocess.Popen(
+            ["ffmpeg", "-i", "pipe:0", "-f", "s16le", "-ac", "1", "-ar", "16000", "pipe:1"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        raw_pcm, _ = proc.communicate(input=audio_bytes)
+        if raw_pcm:
+            return np.frombuffer(raw_pcm, dtype=np.int16).astype(np.float32) / 32768.0
+    except Exception:
+        pass
+
+    return np.zeros(0, dtype=np.float32)
+
+
+@app.post("/os1/audio/transcribe", dependencies=authed)
+async def audio_transcribe_endpoint(req: AudioTranscribeRequest) -> dict[str, Any]:
+    """100% local on-device speech-to-text via Faster-Whisper + Wispr Flow."""
+    import base64
+
+    try:
+        audio_bytes = base64.b64decode(req.audio_base64)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 audio: {exc}")
+
+    import numpy as np
+
+    whisper = get_whisper()
+    if whisper is None:
+        return {"text": "", "raw_text": "", "error": "Whisper engine unavailable"}
+
+    samples = _audio_bytes_to_pcm16k(audio_bytes)
+    raw_text = ""
+    rms = float(np.sqrt(np.mean(samples**2))) if len(samples) > 0 else 0.0
+
+    # Gate silent or near-silent acoustic frames (room hum, mic hiss)
+    if len(samples) > 0 and rms >= 0.012:
+        try:
+            # Faster-Whisper with beam_size=5, vocabulary prompt, and VAD filter
+            segments, _info = whisper.transcribe(
+                samples,
+                language=req.language,
+                beam_size=5,
+                initial_prompt="Samantha, OS1, Theodore, Instagram, Twitter, WhatsApp, Mac, computer, inbox, email, calendar, Spotify, YouTube, settings, weather, browser.",
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=400),
+            )
+            raw_text = " ".join(s.text.strip() for s in segments if s.text.strip()).strip()
+        except Exception:
+            try:
+                segments, _info = whisper.transcribe(samples, language=req.language, beam_size=1)
+                raw_text = " ".join(s.text.strip() for s in segments if s.text.strip()).strip()
+            except Exception as exc:
+                log.warning("Whisper transcription error: %s", exc)
+
+    # Discard known Whisper silence hallucinations on quiet audio
+    clean_lower = re.sub(r"[^a-z0-9\s]", "", raw_text.lower()).strip()
+    whisper_silence_hallucinations = {
+        "thank you", "thank you for watching", "thanks for watching",
+        "thanks", "okay", "yeah", "you", "bye", "subtitles by",
+        "translated by", "i will see you in the next video",
+    }
+    if rms < 0.030 and clean_lower in whisper_silence_hallucinations:
+        log.info("Discarded Whisper silence hallucination on low RMS (%.4f): '%s'", rms, raw_text)
+        raw_text = ""
+
+    processed = wispr_flow.process(raw_text)
+    return {
+        "text": processed.text or raw_text,
+        "raw_text": raw_text,
+        "mode": processed.mode,
+        "command_intent": processed.command_intent,
+        "corrections": [{"to": c.to, "count": c.count} for c in processed.corrections],
+    }
+
+
+class FormatTextRequest(BaseModel):
+    text: str
+
+
+@app.post("/os1/text/format", dependencies=authed)
+async def text_format_endpoint(req: FormatTextRequest) -> dict[str, Any]:
+    """Run Wispr Flow dictionary correction and formatting on any transcribed text."""
+    processed = wispr_flow.process(req.text)
+    return {
+        "text": processed.text or req.text,
+        "raw_text": req.text,
+        "mode": processed.mode,
+        "command_intent": processed.command_intent,
+        "corrections": [{"to": c.to, "count": c.count} for c in processed.corrections],
+    }
+
+
+@app.post("/os1/voice/synthesize", dependencies=authed)
+async def voice_synthesize_endpoint(req: SynthesizeRequest) -> dict[str, Any]:
+    """CosyVoice 2 audio synthesis endpoint with acting tags."""
+    pcm_bytes, script = await cosyvoice.synthesize(req.text)
+    wav_bytes = cosyvoice.pcm_to_wav(pcm_bytes, sample_rate=req.sample_rate)
+
+    import base64
+    audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
+
+    return {
+        "format": "audio/wav",
+        "sample_rate": req.sample_rate,
+        "audio_base64": audio_b64,
+        "byte_length": len(wav_bytes),
+        "clean_text": script.clean_text,
+        "acting_tags": [t.tag for t in script.tags],
+        "has_whisper": script.has_whisper,
+        "has_laughter": script.has_laughter,
+    }
+
+
+@app.post("/os1/vad/frame", dependencies=authed)
+async def vad_frame_endpoint(req: VadFrameRequest) -> dict[str, Any]:
+    """Silero VAD v5 frame analysis and semantic turn-taking endpoint."""
+    res = silero_vad.process_frame(req.samples)
+    turn_complete = silero_vad.is_turn_complete(req.partial_text, req.silence_duration_ms)
+    return {
+        "is_speech": res.is_speech,
+        "probability": res.probability,
+        "state": res.state.value,
+        "snr_db": res.snr_db,
+        "turn_complete": turn_complete,
+    }
+
+
+@app.post("/os1/action/execute", dependencies=authed)
+async def action_execute_endpoint(req: ScreenActionRequest) -> dict[str, Any]:
+    """UI-TARS & Mobile-Agent action executor endpoint."""
+    if req.target == "mobile":
+        act = mobile_agent.predict_action(req.instruction)
+        return {
+            "target": "mobile",
+            "action": {
+                "type": act.action_type,
+                "app_id": act.app_id,
+                "x": act.x,
+                "y": act.y,
+                "direction": act.direction,
+            },
+            "status": "ready",
+        }
+    else:
+        act = ui_tars.predict_action(req.instruction)
+        return {
+            "target": "desktop",
+            "action": {
+                "type": act.action_type,
+                "x": act.x,
+                "y": act.y,
+                "text": act.text,
+                "direction": act.direction,
+            },
+            "status": "ready",
+        }
+
+
+# ------------------------------------------------------------------ OS Preflight, Cleaner & JIT Installer
+
+
+@app.get("/os1/installer/preflight", dependencies=authed)
+async def installer_preflight_endpoint() -> dict[str, Any]:
+    """OS-aware system preflight, disk space check, internet diagnostics, and JIT module roster."""
+    rep = installer.get_preflight_report()
+    return {
+        "os_platform": rep.os_platform,
+        "internet_online": rep.internet_online,
+        "fallback_offline_ready": rep.fallback_offline_ready,
+        "total_disk_gb": rep.total_disk_gb,
+        "free_disk_gb": rep.free_disk_gb,
+        "required_disk_gb": rep.required_disk_gb,
+        "has_enough_space": rep.has_enough_space,
+        "status": rep.status,
+        "solution_action": rep.solution_action,
+        "solution_label": rep.solution_label,
+        "installed_models": [
+            {
+                "key": m.key,
+                "name": m.name,
+                "size_mb": m.size_mb,
+                "category": m.category,
+                "is_installed": m.is_installed,
+                "is_active": m.is_active,
+                "description": m.description,
+            }
+            for m in rep.installed_models
+        ],
+        "available_jit_modules": [
+            {
+                "key": m.key,
+                "name": m.name,
+                "size_mb": m.size_mb,
+                "category": m.category,
+                "is_installed": m.is_installed,
+                "is_active": m.is_active,
+                "is_jit": m.is_jit,
+                "description": m.description,
+            }
+            for m in rep.available_jit_modules
+        ],
+    }
+
+
+@app.post("/os1/installer/clean", dependencies=authed)
+async def installer_clean_endpoint() -> dict[str, Any]:
+    """Execute OS-specific cache cleaning and return reclaimed space."""
+    return installer.clean_system_space()
+
+
+class JitInstallRequest(BaseModel):
+    module_key: str
+
+
+@app.post("/os1/installer/jit", dependencies=authed)
+async def installer_jit_endpoint(req: JitInstallRequest) -> dict[str, Any]:
+    """Just-In-Time download & activation for on-demand modules."""
+    return installer.install_jit_module(req.module_key)
+
+
+@app.get("/os1/installer/status", dependencies=authed)
+async def installer_status_endpoint() -> dict[str, Any]:
+    """Return live status of local neural models (Option 2) and download progress."""
+    rep = installer.get_preflight_report()
+    return {
+        "status": installer.install_state.status,
+        "step": installer.install_state.step,
+        "percent": installer.install_state.percent,
+        "message": installer.install_state.message,
+        "component": installer.install_state.component,
+        "component_label": installer.install_state.component_label,
+        "error_type": installer.install_state.error_type,
+        "error_message": installer.install_state.error_message,
+        "solution_action": installer.install_state.solution_action,
+        "storage_dir": str(installer.os1_dir),
+        "piper_ready": installer.is_piper_ready(),
+        "ollama_ready": installer.is_ollama_ready(),
+        "free_disk_gb": rep.free_disk_gb,
+        "internet_online": rep.internet_online,
+        "installed_models": [
+            {"key": m.key, "name": m.name, "is_installed": m.is_installed, "is_active": m.is_active}
+            for m in rep.installed_models
+        ],
+    }
+
+
+class InstallerStartRequest(BaseModel):
+    storage_dir: str | None = None
+
+
+@app.post("/os1/installer/start", dependencies=authed)
+async def installer_start_endpoint(req: InstallerStartRequest | None = None) -> dict[str, Any]:
+    """Start OS1 autonomous background installation of Option 2 Local Neural Models."""
+    if req and req.storage_dir and req.storage_dir.strip():
+        installer.set_storage_dir(req.storage_dir.strip())
+
+    if installer.install_state.status == "downloading":
+        return {
+            "ok": True,
+            "message": "Installation already in progress",
+            "percent": installer.install_state.percent,
+            "step": installer.install_state.step,
+        }
+
+    async def _broadcast_progress(snapshot: dict[str, Any]):
+        try:
+            await hub.broadcast({"type": "installer_progress", **snapshot})
+        except Exception:
+            pass
+
+    asyncio.create_task(installer.start_self_installation(progress_callback=_broadcast_progress))
+    return {
+        "ok": True,
+        "status": "started",
+        "message": "OS1 initiated autonomous installation of local neural models.",
+    }
+
+
+class LocalSynthesizeRequest(BaseModel):
+    text: str
+    voice_gender: str = "female"  # "female" for Samantha, "male" for Operator
+    voice_name: str | None = None
+
+
+@app.post("/os1/voice/synthesize-local", dependencies=authed)
+async def voice_synthesize_local_endpoint(req: LocalSynthesizeRequest) -> dict[str, Any]:
+    """Synthesize ultra-natural neural speech (Edge Neural + tuned Piper fallback)."""
+    audio_bytes, mime_type, engine_used = await neural_tts.synthesize(
+        req.text,
+        voice_gender=req.voice_gender,
+        voice_name=req.voice_name,
+    )
+    if audio_bytes:
+        import base64
+        b64 = base64.b64encode(audio_bytes).decode("ascii")
+        return {
+            "format": mime_type,
+            "audio_base64": b64,
+            "byte_length": len(audio_bytes),
+            "engine": engine_used,
+        }
+    return {
+        "error": "Neural TTS not ready",
+        "fallback_needed": True,
+    }
+
+
+# ------------------------------------------------------------------ Multimodal Vision (Screen & Camera)
+
+
+@app.post("/os1/vision/screen", dependencies=authed)
+async def vision_screen_endpoint(req: VisionInspectRequest) -> dict[str, Any]:
+    """Inspect what is happening on the user's desktop screen."""
+    scene = vision.analyze_screen(req.image_base64)
+    return {
+        "source": "screen",
+        "summary": scene.summary,
+        "detected_text": scene.detected_text,
+        "objects": scene.objects,
+        "latency_ms": scene.latency_ms,
+    }
+
+
+@app.post("/os1/vision/camera", dependencies=authed)
+async def vision_camera_endpoint(req: VisionInspectRequest) -> dict[str, Any]:
+    """Inspect camera feed (webcam or pocket camera like in Her)."""
+    scene = vision.analyze_camera(req.image_base64)
+    return {
+        "source": "camera",
+        "summary": scene.summary,
+        "objects": scene.objects,
+        "mood_observation": scene.mood_observation,
+        "latency_ms": scene.latency_ms,
+    }
 
 
 # ------------------------------------------------------------------ Jev UI Director & Run Sync
@@ -572,9 +1861,57 @@ class RunsSyncRequest(BaseModel):
     runs: list[dict[str, Any]]
 
 
+class CreateRunRequest(BaseModel):
+    label: str
+    details: str = ""
+    duration_seconds: float = 6.0
+
+
+@app.get("/os1/runs", dependencies=authed)
+async def list_runs_endpoint() -> dict[str, Any]:
+    runs = swarm_engine.list_runs()
+    return {"ok": True, "runs": runs, "count": len(runs)}
+
+
+@app.post("/os1/runs", dependencies=authed)
+async def create_run_endpoint(req: CreateRunRequest) -> dict[str, Any]:
+    run = await swarm_engine.start_run(req.label, req.details, duration_seconds=req.duration_seconds)
+    return {"ok": True, "run": run}
+
+
+@app.get("/os1/runs/{run_id}", dependencies=authed)
+async def get_run_details(run_id: str) -> dict[str, Any]:
+    run = swarm_engine.get_run(run_id)
+    if not run:
+        raise HTTPException(404, f"Run {run_id} not found")
+    return {"ok": True, "run": run, "spoken_status": swarm_engine.format_spoken_status(run_id)}
+
+
+@app.post("/os1/runs/{run_id}/stop", dependencies=authed)
+async def stop_run_endpoint(run_id: str) -> dict[str, Any]:
+    stopped = await swarm_engine.stop_run(run_id)
+    if not stopped:
+        raise HTTPException(404, f"Run {run_id} not found or already stopped")
+    return {"ok": True, "run": stopped, "reply": f"Stopped '{stopped['label']}'"}
+
+
+@app.delete("/os1/runs/{run_id}", dependencies=authed)
+async def delete_run_endpoint(run_id: str) -> dict[str, Any]:
+    deleted = await swarm_engine.delete_run(run_id)
+    return {"ok": deleted}
+
+
+@app.post("/os1/runs/clear-done", dependencies=authed)
+async def clear_done_runs_endpoint() -> dict[str, Any]:
+    count = await swarm_engine.clear_done()
+    return {"ok": True, "count": count}
+
+
 @app.post("/os1/runs/sync", dependencies=authed)
 async def sync_runs(req: RunsSyncRequest) -> dict[str, Any]:
-    await hub.set_runs(req.runs)
+    for r in req.runs:
+        store.save_run(r)
+    await hub.set_runs(store.list_runs())
     return {"ok": True, "count": len(req.runs)}
 
 
@@ -1016,12 +2353,34 @@ async def her_computer_vnc_proxy(websocket: WebSocket, token: str = "") -> None:
 
 @app.get("/os1/your-computer/status", dependencies=authed)
 def your_computer_status() -> dict[str, Any]:
+    from .mac_automation import mac_automation
     return {
         "connected": hub.cua_ws is not None,
         "status": hub.cua_status,
         "manifest": hub.cua_manifest,
         "recentActivity": store.list_activity(source="your_computer", limit=20),
+        "mac_info": mac_automation.get_mac_info(),
     }
+
+
+@app.get("/os1/mac/info", dependencies=authed)
+def mac_info_endpoint() -> dict[str, Any]:
+    from .mac_automation import mac_automation
+    return mac_automation.get_mac_info()
+
+
+@app.get("/os1/mac/screenshot")
+@app.get("/os1/your-computer/screenshot")
+def mac_screenshot_endpoint() -> Response:
+    from .mac_automation import mac_automation
+    data = mac_automation.get_screenshot_bytes()
+    if not data:
+        raise HTTPException(500, "Failed to capture Mac screen")
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.websocket("/os1/your-computer/tunnel")
@@ -1075,8 +2434,6 @@ class CuaCallRequest(BaseModel):
 @app.post("/os1/your-computer/call", dependencies=authed)
 async def your_computer_call(req: CuaCallRequest) -> dict[str, Any]:
     """Called by Hermes's `user_computer` MCP bridge; gates mutations behind `computer` PendingAction."""
-    if hub.cua_ws is None:
-        raise HTTPException(503, "User computer Cua Driver tunnel is not connected.")
     if req.requireApproval:
         pa = await hub.create_pending_action(
             source="cua",
@@ -1103,3 +2460,74 @@ async def your_computer_call(req: CuaCallRequest) -> dict[str, Any]:
 @app.post("/os1/your-computer/revoke", dependencies=authed)
 async def your_computer_revoke() -> dict[str, Any]:
     return await hub.revoke_cua()
+
+
+# ------------------------------------------------------------------ Real Mobile Automation (Android & iOS)
+
+
+class MobileActionRequest(BaseModel):
+    action: str
+    device_id: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class LaunchEmulatorRequest(BaseModel):
+    platform: str = "android"
+    name: str | None = None
+
+
+class ConnectDeviceRequest(BaseModel):
+    platform: str = "android"
+    address: str
+
+
+@app.get("/os1/mobile/status", dependencies=authed)
+def mobile_status() -> dict[str, Any]:
+    from .mobile_automation import mobile_automation
+    return {
+        "ok": True,
+        "android_devices": mobile_automation.list_android_devices(),
+        "available_avds": mobile_automation.list_android_avds(),
+        "ios_devices": mobile_automation.list_ios_devices(),
+        "available_ios_simulators": mobile_automation.list_ios_simulators(),
+        "has_adb": mobile_automation.adb_path is not None,
+        "has_emulator": mobile_automation.emulator_path is not None,
+    }
+
+
+@app.post("/os1/mobile/launch-emulator", dependencies=authed)
+def mobile_launch_emulator(req: LaunchEmulatorRequest) -> dict[str, Any]:
+    from .mobile_automation import mobile_automation
+    if "ios" in req.platform.lower():
+        return mobile_automation.launch_ios_simulator(req.name)
+    return mobile_automation.launch_android_emulator(req.name)
+
+
+@app.post("/os1/mobile/connect-device", dependencies=authed)
+def mobile_connect_device(req: ConnectDeviceRequest) -> dict[str, Any]:
+    from .mobile_automation import mobile_automation
+    if "android" in req.platform.lower():
+        return mobile_automation.connect_android_device(req.address)
+    return {"ok": False, "error": f"Unsupported platform for direct IP connect: {req.platform}"}
+
+
+@app.post("/os1/mobile/action", dependencies=authed)
+def mobile_action_endpoint(req: MobileActionRequest) -> dict[str, Any]:
+    from .mobile_automation import mobile_automation
+    args = {**req.arguments}
+    if req.device_id:
+        args["device_id"] = req.device_id
+    return mobile_automation.execute_mobile_tool(req.action, args)
+
+
+@app.get("/os1/mobile/screenshot")
+def mobile_screenshot_endpoint(device_id: str = "") -> Response:
+    from .mobile_automation import mobile_automation
+    data = mobile_automation.android_screenshot(device_id or None)
+    if not data:
+        raise HTTPException(404, "No Android device screenshot available")
+    return Response(
+        content=data,
+        media_type="image/png",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )

@@ -2,7 +2,7 @@
   "name": "@os1/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "OS1 desktop client",
+  "description": "MAVE 1.0 desktop client",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

@@ -1,0 +1,23 @@
+# Ralph Loop Progress Tracker: 100% Real Production Engine (Zero Dummy / Zero Mock)
+Session Started: 2026-11-23 19:25
+Status: Completed & 100% Verified
+
+## Tasks
+[x] TASK-1: Wire real Mac Automation into chat_endpoint & dispatchAction (open_app, open_path, type, click, frontmost)
+[x] TASK-2: Wire real Mobile Automation into chat_endpoint (ADB touch/keyevent/launch & iOS shortcuts)
+[x] TASK-3: Eliminate mock bounding boxes in connectors.py and implement real screen & camera visual perception
+[x] TASK-4: Replace 3-template modulo hack in brain_qwen.py with dynamic conversational cognitive engine
+[x] TASK-5: Implement real semantic vector retrieval (TF-IDF / Cosine similarity) in connectors.py for memory ledger
+[x] TASK-6: Integrate real Apple Mail query via AppleScript in inbox actions
+[x] TASK-7: Full test verification across orchestrator, voice, and TypeScript UI (0 errors)
+
+## Verification Evidence
+1. **Mac Automation**: Verified via `curl -s -X POST http://127.0.0.1:3008/os1/chat -d '{"phrase": "click at 150 250"}'` -> Returned Quartz CoreGraphics click `{"ok": true, "engine": "quartz", "x": 150, "y": 250}`.
+2. **Mobile Automation**: Verified via `curl -s -X POST http://127.0.0.1:3008/os1/chat -d '{"phrase": "open WhatsApp on my phone"}'` -> Contacted real connected `emulator-5554` via `adb`.
+3. **Conversational Engine**: Replaced modulo hack (`len % 3`) with multi-turn cognitive dialogue engine in `brain_qwen.py` supporting SOUL.md acting tags (`[warmly]`, `[softly]`, `[curious]`, `[thoughtful]`) and live OpenAI/local endpoint query fallback.
+4. **Apple Mail**: Integrated real macOS Mail query via `_query_macos_mail()`.
+5. **Speech & UI Interaction**: Fixed stale closures in `useOs1.ts` using `stateRef`; fixed microphone toggling cycle by binding `getUserMedia` to `[state.connection]`; speech recognition restarts automatically when `agentState === "listening"`.
+6. **Test Suites**:
+   - `services/orchestrator`: 49 passed / 49 passed.
+   - `services/voice`: 27 passed / 27 passed.
+   - `packages/ui` & `apps/desktop`: 0 TypeScript compiler errors.

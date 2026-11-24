@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { BrowserWindow, Menu, app, globalShortcut, ipcMain, session, shell } from "electron";
 import { CuaTunnelHost } from "./cuaHost";
 
-const ORCHESTRATOR_URL = process.env.OS1_ORCHESTRATOR_URL ?? "http://127.0.0.1:8787";
+const ORCHESTRATOR_URL = process.env.OS1_ORCHESTRATOR_URL ?? "http://127.0.0.1:3008";
 const CLIENT_TOKEN = process.env.OS1_CLIENT_TOKEN ?? "";
 const CORAL = "#cd4f33";
 

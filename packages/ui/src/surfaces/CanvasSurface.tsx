@@ -1,4 +1,5 @@
-import type { CanvasState, Os1Card, SpeakableAction } from "../types";
+import { useEffect, useRef, useState } from "react";
+import type { AudioSketchCard, CanvasState, Os1Card, SpeakableAction } from "../types";
 
 /**
  * Paper 12 — Generative UI ("Made just now"): renders all 7 validated OS1 card types
@@ -17,24 +18,13 @@ export function CanvasSurface({
 }) {
   const cards = canvas?.cards ?? [];
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        padding: "52px 56px 96px",
-        display: "grid",
-        gridTemplateRows: "auto 1fr",
-        gap: 24,
-        maxWidth: 1180,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
+    <div className="os1-surface-container" style={{ gridTemplateRows: "auto 1fr" }}>
+      <div className="os1-surface-header">
         <div>
           <div className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
             12 · Made just now
           </div>
-          <h2 style={{ margin: "6px 0 0", font: "200 40px/1.1 var(--font-sans)" }}>
+          <h2 className="os1-surface-title">
             {canvas?.title || "Made just now"}
           </h2>
           {canvas?.subtitle && (
@@ -52,9 +42,9 @@ export function CanvasSurface({
         className="os1-scroll"
         style={{
           display: "grid",
-          gridTemplateColumns: cards.length > 1 ? "repeat(auto-fit, minmax(420px, 1fr))" : "minmax(0, 760px)",
+          gridTemplateColumns: cards.length > 1 ? "repeat(auto-fit, minmax(min(100%, 340px), 1fr))" : "minmax(0, 760px)",
           justifyContent: "center",
-          gap: 22,
+          gap: 20,
           alignContent: "start",
         }}
       >
@@ -64,7 +54,7 @@ export function CanvasSurface({
               Nothing laid out yet.
             </p>
             <p style={{ margin: "8px 0 0", color: "var(--on-coral-dim)" }}>
-              When comparing choices, drafting a letter, or reviewing a plan, Samantha sketches cards here automatically.
+              When comparing choices, drafting a letter, or reviewing a plan, MAVE sketches cards here automatically.
             </p>
           </div>
         ) : (
@@ -145,9 +135,9 @@ function CardRenderer({ card, compact, onSay }: { card: Os1Card; compact?: boole
 
     case "ChoicePairCard":
       return (
-        <div className="os1-paper-card" style={{ padding: 28, display: "grid", gap: 20 }}>
+        <div className="os1-paper-card" style={{ padding: "clamp(18px, 3.5vw, 28px)", display: "grid", gap: 18 }}>
           <div style={{ font: "300 24px/1.3 var(--font-sans)", textAlign: "center" }}>{card.prompt}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 14 }}>
             {[card.left, card.right].map((item) => (
               <button
                 key={item.speakablePhrase}
@@ -272,39 +262,160 @@ function CardRenderer({ card, compact, onSay }: { card: Os1Card; compact?: boole
       );
 
     case "AudioSketchCard":
-      return (
-        <div className="os1-studio-card" style={{ padding: 26, display: "grid", gap: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div>
-              <div className="os1-mono" style={{ fontSize: 11, color: "var(--coral)" }}>
-                Audio sketch {card.mood ? `· ${card.mood}` : ""}
-              </div>
-              <h3 style={{ margin: "4px 0 0", font: "300 24px var(--font-sans)" }}>{card.title}</h3>
-            </div>
-            <span className="os1-mono" style={{ color: "var(--ink-dim)" }}>
-              {card.duration || "0:42"}
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, height: 56 }}>
-            {(
-              card.bars ?? [
-                0.28, 0.45, 0.72, 0.54, 0.88, 0.64, 0.94, 0.5, 0.76, 0.42, 0.84, 0.62, 0.92, 0.48, 0.7, 0.55, 0.82,
-                0.38, 0.66, 0.44, 0.58, 0.34, 0.48, 0.25,
-              ]
-            ).map((h, i) => (
-              <span
-                key={i}
-                style={{
-                  flex: "0 0 5px",
-                  height: `${Math.max(16, Math.round(h * 100))}%`,
-                  borderRadius: 999,
-                  background: i % 4 === 0 ? "var(--coral)" : "rgba(56,40,30,0.28)",
-                }}
-              />
-            ))}
-          </div>
-          <ActionRow actions={card.actions} compact={compact} onSay={onSay} />
-        </div>
-      );
+      return <AudioSketchRenderer card={card} compact={compact} onSay={onSay} />;
   }
+}
+
+function playPianoSketch(): () => void {
+  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return () => {};
+  const ctx = new AudioCtx();
+
+  // Gentle warm piano progression (Fmaj7 -> Am7 -> Cmaj7 -> G)
+  const chords: { time: number; notes: number[] }[] = [
+    { time: 0.1, notes: [174.61, 261.63, 329.63, 440.0] },
+    { time: 2.2, notes: [110.0, 164.81, 220.0, 261.63, 329.63] },
+    { time: 4.4, notes: [130.81, 196.0, 246.94, 329.63] },
+    { time: 6.6, notes: [98.0, 146.83, 196.0, 246.94, 293.66] },
+    { time: 8.8, notes: [174.61, 220.0, 261.63, 329.63, 440.0] },
+  ];
+
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.32, ctx.currentTime);
+  master.connect(ctx.destination);
+
+  chords.forEach(({ time, notes }) => {
+    notes.forEach((freq, noteIdx) => {
+      const noteTime = ctx.currentTime + time + noteIdx * 0.04;
+      const osc = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, noteTime);
+
+      osc2.type = "sine";
+      osc2.frequency.setValueAtTime(freq * 2, noteTime);
+
+      gain.gain.setValueAtTime(0.0001, noteTime);
+      gain.gain.linearRampToValueAtTime(0.22 / Math.sqrt(notes.length), noteTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 2.6);
+
+      osc.connect(gain);
+      osc2.connect(gain);
+      gain.connect(master);
+
+      osc.start(noteTime);
+      osc2.start(noteTime);
+      osc.stop(noteTime + 2.8);
+      osc2.stop(noteTime + 2.8);
+    });
+  });
+
+  return () => {
+    try {
+      master.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.08);
+      setTimeout(() => ctx.close(), 100);
+    } catch {}
+  };
+}
+
+function AudioSketchRenderer({
+  card,
+  compact,
+  onSay,
+}: {
+  card: AudioSketchCard;
+  compact?: boolean;
+  onSay: (p: string) => void;
+}) {
+  const [playing, setPlaying] = useState(false);
+  const stopRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      stopRef.current?.();
+    };
+  }, []);
+
+  const togglePlay = () => {
+    if (playing) {
+      stopRef.current?.();
+      stopRef.current = null;
+      setPlaying(false);
+    } else {
+      setPlaying(true);
+      const stop = playPianoSketch();
+      stopRef.current = stop;
+      // Piano sketch runs ~11 seconds
+      setTimeout(() => {
+        setPlaying(false);
+        stopRef.current = null;
+      }, 11500);
+    }
+  };
+
+  const handleAction = (act: SpeakableAction) => {
+    if (/play|listen/i.test(act.speakablePhrase) || /play|listen/i.test(act.label)) {
+      togglePlay();
+    }
+    onSay(act.speakablePhrase);
+  };
+
+  const bars = card.bars ?? [
+    0.28, 0.45, 0.72, 0.54, 0.88, 0.64, 0.94, 0.5, 0.76, 0.42, 0.84, 0.62, 0.92, 0.48, 0.7, 0.55, 0.82,
+    0.38, 0.66, 0.44, 0.58, 0.34, 0.48, 0.25,
+  ];
+
+  return (
+    <div className="os1-studio-card" style={{ padding: 26, display: "grid", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div>
+          <div className="os1-mono" style={{ fontSize: 11, color: "var(--coral)" }}>
+            Audio sketch {card.mood ? `· ${card.mood}` : ""}
+          </div>
+          <h3 style={{ margin: "4px 0 0", font: "300 24px var(--font-sans)" }}>{card.title}</h3>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            className="os1-pill-ink primary"
+            style={{ fontSize: 12, padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 4 }}
+            onClick={togglePlay}
+          >
+            {playing ? "❚❚ Pause" : "▶ Play"}
+          </button>
+          <span className="os1-mono" style={{ color: "var(--ink-dim)" }}>
+            {card.duration || "0:42"}
+          </span>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, height: 56 }}>
+        {bars.map((h: number, i: number) => (
+          <span
+            key={i}
+            style={{
+              flex: "0 0 5px",
+              height: `${Math.max(16, Math.round((playing ? (h * (0.6 + 0.4 * Math.sin(Date.now() / 150 + i))) : h) * 100))}%`,
+              borderRadius: 999,
+              background: playing ? "var(--coral)" : i % 4 === 0 ? "var(--coral)" : "rgba(56,40,30,0.28)",
+              transition: "height 0.2s ease, background 0.3s ease",
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+        {(compact ? card.actions.slice(0, 2) : card.actions).map((act: SpeakableAction) => (
+          <button
+            key={act.speakablePhrase}
+            type="button"
+            className={`os1-pill-ink ${act.tone === "primary" ? "primary" : act.tone === "danger" ? "danger" : ""}`}
+            onClick={() => handleAction(act)}
+          >
+            “{act.speakablePhrase}”
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }

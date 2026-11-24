@@ -35,8 +35,9 @@ export function PendingActionModal({
         backdropFilter: "blur(10px)",
         display: "grid",
         placeItems: "center",
-        padding: 32,
+        padding: "clamp(16px, 4vw, 32px)",
         zIndex: 50,
+        boxSizing: "border-box",
       }}
     >
       <div
@@ -44,10 +45,11 @@ export function PendingActionModal({
         style={{
           width: "100%",
           maxWidth: 540,
-          padding: 30,
+          padding: "clamp(20px, 4vw, 30px)",
           display: "grid",
           gap: 18,
           border: highStakes ? "2px solid var(--crimson)" : undefined,
+          boxSizing: "border-box",
         }}
       >
         <div className="os1-mono" style={{ fontSize: 11, color: highStakes ? "var(--crimson)" : "var(--coral)" }}>
@@ -113,13 +115,17 @@ export function UndoToastBar({ toast, onUndo }: { toast: UndoToast; onUndo: (id:
         transform: "translateX(-50%)",
         display: "flex",
         alignItems: "center",
-        gap: 14,
-        padding: "10px 16px 10px 20px",
+        justifyContent: "center",
+        flexWrap: "wrap",
+        gap: 12,
+        padding: "8px 16px",
         borderRadius: 999,
         background: "var(--paper)",
         color: "var(--ink)",
         boxShadow: "0 14px 40px rgba(32, 12, 6, 0.3)",
         zIndex: 45,
+        maxWidth: "calc(100vw - 24px)",
+        boxSizing: "border-box",
       }}
     >
       <span style={{ font: "400 14px var(--font-sans)" }}>{toast.label}</span>

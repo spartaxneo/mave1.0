@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { SayChips } from "../components/SayChips";
 import type { ConnectorItem, ConnectorPolicy, MemoryCategory, MemoryItem, VoiceSettings } from "../types";
+import { resolveHelloVoice } from "../useOs1";
 
 const POLICY_CYCLE: ConnectorPolicy[] = ["full_access", "ask_before_write", "read_only", "ask_every_time"];
 
@@ -38,24 +39,13 @@ export function ConnectorsSurface({
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        padding: "52px 56px 96px",
-        display: "grid",
-        gridTemplateRows: "auto 1fr auto",
-        gap: 24,
-        maxWidth: 1020,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+    <div className="os1-surface-container">
+      <div className="os1-surface-header">
         <div>
           <div className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
             13 · Connectors · Composio
           </div>
-          <h2 style={{ margin: "6px 0 0", font: "200 40px/1.1 var(--font-sans)" }}>What she can reach</h2>
+          <h2 className="os1-surface-title">What she can reach</h2>
         </div>
         <button type="button" className="os1-pill" onClick={onBack}>
           Back to talking
@@ -71,6 +61,7 @@ export function ConnectorsSurface({
               justifyContent: "space-between",
               alignItems: "center",
               gap: 16,
+              flexWrap: "wrap",
               padding: "18px 0",
               borderBottom: idx < connectors.length - 1 ? "1px solid var(--ink-faint)" : "none",
             }}
@@ -126,25 +117,30 @@ export function VoiceSurface({
     { key: "voice_male", name: "Voice III", desc: "Grounded · calm · Fish Drama 3", speed: 0.97, temperature: 0.68 },
   ];
 
+  const playVoiceSample = (name: string, speed: number, _temp: number) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(`This is ${name}. I'm right here with you.`);
+    const voice = resolveHelloVoice();
+    if (voice) utt.voice = voice;
+    utt.rate = Math.max(0.75, Math.min(1.3, speed));
+    utt.pitch = 1.0;
+    window.speechSynthesis.speak(utt);
+  };
+
+  const handleSelectPreset = (p: (typeof presets)[0]) => {
+    onUpdate({ voiceKey: p.key, speed: p.speed, temperature: p.temperature });
+    playVoiceSample(p.name, p.speed, p.temperature);
+  };
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        padding: "52px 56px 96px",
-        display: "grid",
-        gridTemplateRows: "auto 1fr auto",
-        gap: 24,
-        maxWidth: 980,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+    <div className="os1-surface-container">
+      <div className="os1-surface-header">
         <div>
           <div className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
             14 · Voice
           </div>
-          <h2 style={{ margin: "6px 0 0", font: "200 40px/1.1 var(--font-sans)" }}>How she sounds</h2>
+          <h2 className="os1-surface-title">How she sounds</h2>
         </div>
         <button type="button" className="os1-pill" onClick={onBack}>
           Back to talking
@@ -152,14 +148,14 @@ export function VoiceSurface({
       </div>
 
       <div style={{ display: "grid", gap: 20, alignContent: "start" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 14 }}>
           {presets.map((p) => {
             const active = voice.voiceKey === p.key;
             return (
               <button
                 key={p.key}
                 type="button"
-                onClick={() => onUpdate({ voiceKey: p.key, speed: p.speed, temperature: p.temperature })}
+                onClick={() => handleSelectPreset(p)}
                 className={active ? "os1-paper-card" : "os1-glass"}
                 style={{
                   padding: 24,
@@ -180,7 +176,7 @@ export function VoiceSurface({
           })}
         </div>
 
-        <div className="os1-paper-card" style={{ padding: 26, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 28 }}>
+        <div className="os1-paper-card" style={{ padding: 26, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 24 }}>
           <label style={{ display: "grid", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span className="os1-label" style={{ color: "var(--ink-dim)" }}>
@@ -261,24 +257,13 @@ export function MemorySurface({
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        padding: "52px 56px 96px",
-        display: "grid",
-        gridTemplateRows: "auto auto 1fr auto",
-        gap: 18,
-        maxWidth: 1120,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+    <div className="os1-surface-container" style={{ gridTemplateRows: "auto auto 1fr auto", gap: 16 }}>
+      <div className="os1-surface-header">
         <div>
           <div className="os1-label" style={{ color: "var(--on-coral-dim)" }}>
             15 · Memory · Really gone when forgotten
           </div>
-          <h2 style={{ margin: "6px 0 0", font: "200 40px/1.1 var(--font-sans)" }}>What she remembers</h2>
+          <h2 className="os1-surface-title">What she remembers</h2>
         </div>
         <button type="button" className="os1-pill" onClick={onBack}>
           Back to talking
@@ -313,7 +298,7 @@ export function MemorySurface({
         className="os1-scroll"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(clamp(260px, 100%, 340px), 1fr))",
           gap: 14,
           alignContent: "start",
         }}
@@ -360,7 +345,7 @@ export function MemorySurface({
       </div>
 
       {/* Add a moment directly */}
-      <form onSubmit={submit} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <form onSubmit={submit} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <select
           value={draftCat}
           onChange={(e) => setDraftCat(e.target.value as MemoryCategory)}
@@ -384,7 +369,8 @@ export function MemorySurface({
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Add something you want her to remember…"
           style={{
-            flex: 1,
+            flex: "1 1 200px",
+            minWidth: 160,
             padding: "10px 18px",
             borderRadius: 999,
             border: "1px solid rgba(255,253,249,0.34)",

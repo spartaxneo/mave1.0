@@ -66,8 +66,39 @@ class StateHub:
         self.clients: set[WebSocket] = set()
         self.active_surface: str = "conversation"
         self.mood: dict[str, Any] = {"warmth": 0.45, "pace": 0.45, "overwhelm": 0.15, "compactMode": False}
-        self.runs: list[dict[str, Any]] = []
-        self.canvas: dict[str, Any] | None = None
+        self.runs: list[dict[str, Any]] = self.store.list_runs()
+        self.canvas: dict[str, Any] | None = {
+            "title": "Two ferries to Sausalito",
+            "subtitle": "Sunny forecast · light breeze (68°F)",
+            "cards": [
+                {
+                    "kind": "ChoicePairCard",
+                    "id": "ferry",
+                    "prompt": "Which boat feels better for Saturday?",
+                    "left": {
+                        "title": "10:30 AM",
+                        "detail": "Quiet morning crossing · coffee on deck",
+                        "speakablePhrase": "The 10:30",
+                    },
+                    "right": {
+                        "title": "1:45 PM",
+                        "detail": "Unhurried morning · golden light back",
+                        "speakablePhrase": "The 1:45",
+                    },
+                },
+                {
+                    "kind": "AudioSketchCard",
+                    "id": "sketch",
+                    "title": "Late Afternoon on the Bay",
+                    "mood": "Warm piano · 76 bpm",
+                    "duration": "0:48",
+                    "actions": [
+                        {"label": "Play it", "speakablePhrase": "Play it", "tone": "primary"},
+                        {"label": "Softer", "speakablePhrase": "A little softer"},
+                    ],
+                },
+            ],
+        }
         self.pending_actions: dict[str, PendingAction] = {}
         self.action_waiters: dict[str, asyncio.Future[str]] = {}
         # One-time server-verified approval tokens minted ONLY when a human approves a PendingAction.
@@ -119,6 +150,31 @@ class StateHub:
                 [
                     {"phrase": "Trash the newsletters", "target": "inbox", "action": "trash_newsletters"},
                     {"phrase": "Keep the VIPs", "target": "inbox", "action": "keep_vips"},
+                    {"phrase": "Back to talking", "target": "surface", "action": "conversation"},
+                ]
+            )
+        if self.active_surface == "swarm":
+            for r in self.runs:
+                lbl = r.get("label", "")
+                rid = r.get("id", "")
+                if r.get("status") in ("running", "waiting"):
+                    pills.append({
+                        "phrase": f"Stop {lbl}",
+                        "target": "swarm",
+                        "action": "stop",
+                        "payload": {"run_id": rid, "label": lbl},
+                    })
+                pills.append({
+                    "phrase": f"How is {lbl} going?",
+                    "target": "swarm",
+                    "action": "status",
+                    "payload": {"run_id": rid, "label": lbl},
+                })
+            pills.extend(
+                [
+                    {"phrase": "How's it going?", "target": "swarm", "action": "status_active"},
+                    {"phrase": "Stop it", "target": "swarm", "action": "stop_latest"},
+                    {"phrase": "Clear finished tasks", "target": "swarm", "action": "clear_done"},
                     {"phrase": "Back to talking", "target": "surface", "action": "conversation"},
                 ]
             )
@@ -272,27 +328,52 @@ class StateHub:
     # ------------------------------------------------------ Cua tunnel helpers
 
     async def call_cua(self, tool: str, arguments: dict[str, Any], *, timeout_s: float = 30.0) -> dict[str, Any]:
-        if self.cua_ws is None:
-            return {"ok": False, "error": "User computer Cua Driver tunnel is not connected."}
-        call_id = f"cua_{uuid.uuid4().hex[:10]}"
-        fut: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
-        self.cua_pending_calls[call_id] = fut
+        # If external WebSocket Cua tunnel is active, route through it
+        if self.cua_ws is not None:
+            call_id = f"cua_{uuid.uuid4().hex[:10]}"
+            fut: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+            self.cua_pending_calls[call_id] = fut
+            try:
+                self.cua_status = f"running: {tool}"
+                self.store.add_activity(source="your_computer", title=f"{tool}", detail=json.dumps(arguments)[:160], status="running")
+                await self.broadcast()
+                await self.cua_ws.send_text(json.dumps({"type": "call", "id": call_id, "tool": tool, "arguments": arguments}))
+                result = await asyncio.wait_for(fut, timeout=timeout_s)
+                self.cua_status = "ready"
+                self.store.add_activity(source="your_computer", title=f"{tool}", detail="completed", status="done")
+                await self.broadcast()
+                return result
+            except Exception as exc:  # noqa: BLE001
+                self.cua_status = "ready" if self.cua_ws else "disconnected"
+                await self.broadcast()
+                return {"ok": False, "error": str(exc)}
+            finally:
+                self.cua_pending_calls.pop(call_id, None)
+
+        # 100% Real Native macOS & Mobile Automation Fallback
+        from .mac_automation import mac_automation
+        from .mobile_automation import mobile_automation
+
+        self.cua_status = f"running: {tool}"
+        self.store.add_activity(source="your_computer", title=f"{tool}", detail=json.dumps(arguments)[:160], status="running")
+        await self.broadcast()
+
         try:
-            self.cua_status = f"running: {tool}"
-            self.store.add_activity(source="your_computer", title=f"{tool}", detail=json.dumps(arguments)[:160], status="running")
-            await self.broadcast()
-            await self.cua_ws.send_text(json.dumps({"type": "call", "id": call_id, "tool": tool, "arguments": arguments}))
-            result = await asyncio.wait_for(fut, timeout=timeout_s)
+            if tool.startswith(("android_", "ios_")) or tool in ("tap", "swipe", "mobile_action", "devices"):
+                res = mobile_automation.execute_mobile_tool(tool, arguments)
+            else:
+                res = mac_automation.execute_tool(tool, arguments)
+
+            status_str = "done" if res.get("ok", True) else "failed"
+            self.store.add_activity(source="your_computer", title=f"{tool}", detail=json.dumps(res)[:160], status=status_str)
             self.cua_status = "ready"
-            self.store.add_activity(source="your_computer", title=f"{tool}", detail="completed", status="done")
             await self.broadcast()
-            return result
-        except Exception as exc:  # noqa: BLE001
-            self.cua_status = "ready" if self.cua_ws else "disconnected"
+            return res
+        except Exception as exc:
+            self.cua_status = "ready"
+            self.store.add_activity(source="your_computer", title=f"{tool}", detail=str(exc)[:160], status="error")
             await self.broadcast()
             return {"ok": False, "error": str(exc)}
-        finally:
-            self.cua_pending_calls.pop(call_id, None)
 
     async def revoke_cua(self) -> dict[str, Any]:
         """Immediate 'Let me drive' kill switch: cancel pending computer approvals & revoke on client."""

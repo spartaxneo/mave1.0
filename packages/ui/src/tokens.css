@@ -64,22 +64,22 @@ html, body, #root {
 .os1-label {
   font-family: var(--font-sans);
   font-weight: 500;
-  font-size: 12px;
-  letter-spacing: 0.18em;
+  font-size: clamp(10px, 2.5vw, 12px);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .os1-mono {
   font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.14em;
+  font-size: clamp(10px, 2.4vw, 12px);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.os1-display { font-weight: 200; font-size: 72px; line-height: 72px; letter-spacing: -0.02em; }
-.os1-spoken { font-weight: 200; font-size: 44px; line-height: 58px; letter-spacing: -0.01em; }
-.os1-lead { font-weight: 300; font-size: 22px; line-height: 32px; }
-.os1-heard { font-weight: 300; font-style: italic; font-size: 18px; color: var(--on-coral-dim); }
+.os1-display { font-weight: 200; font-size: clamp(36px, 8vw, 72px); line-height: 1.05; letter-spacing: -0.02em; }
+.os1-spoken { font-weight: 200; font-size: clamp(20px, 4.6vw, 44px); line-height: 1.35; letter-spacing: -0.01em; }
+.os1-lead { font-weight: 300; font-size: clamp(15px, 3.2vw, 22px); line-height: 1.45; }
+.os1-heard { font-weight: 300; font-style: italic; font-size: clamp(13px, 2.8vw, 18px); color: var(--on-coral-dim); }
 
 .os1-fade { animation: os1-fade 600ms var(--ease-soft) both; }
 @keyframes os1-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -100,11 +100,83 @@ input::placeholder { color: var(--on-coral-faint); }
 .os1-surface {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   animation: os1-surface-in 750ms var(--ease-soft) both;
 }
 @keyframes os1-surface-in { from { opacity: 0; filter: blur(6px); } to { opacity: 1; filter: none; } }
+
+/* Centered content block for voice screens (Conversation, Setup, Boot, Naming) */
+.os1-screen-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: clamp(60px, 9vh, 88px) clamp(16px, 4vw, 36px) clamp(78px, 12vh, 110px);
+  box-sizing: border-box;
+  gap: clamp(14px, 2.6vh, 28px);
+  min-height: 100%;
+}
+
+/* Corner anchors with responsive insets and collision avoidance */
+.os1-corner-tl {
+  position: fixed;
+  top: clamp(16px, 3.5vw, 56px);
+  left: clamp(16px, 4vw, 60px);
+  color: var(--on-coral-dim);
+  z-index: 25;
+}
+.os1-corner-tr {
+  position: fixed;
+  top: clamp(16px, 3.5vw, 56px);
+  right: clamp(16px, 4vw, 60px);
+  color: var(--on-coral-dim);
+  z-index: 25;
+}
+.os1-corner-bl {
+  position: fixed;
+  bottom: clamp(56px, 7.5vh, 76px);
+  left: clamp(16px, 4vw, 60px);
+  color: var(--on-coral-dim);
+  z-index: 25;
+}
+.os1-corner-br {
+  position: fixed;
+  bottom: clamp(56px, 7.5vh, 76px);
+  right: clamp(16px, 4vw, 60px);
+  color: var(--on-coral-dim);
+  z-index: 25;
+}
+.os1-corner-bc {
+  position: fixed;
+  bottom: clamp(56px, 7.5vh, 76px);
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--on-coral-dim);
+  z-index: 25;
+}
+
+@media (max-width: 640px) {
+  .os1-corner-bl {
+    bottom: 54px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .os1-corner-br {
+    display: none;
+  }
+}
 
 /* Warm tactile paper card used by Paper 07–15 surfaces */
 .os1-paper-card {
@@ -170,12 +242,16 @@ input::placeholder { color: var(--on-coral-faint); }
   font: 500 11px var(--font-sans); letter-spacing: 0.18em; text-transform: uppercase; color: var(--paper);
   animation: os1-fade 300ms var(--ease-soft) both;
   z-index: 60;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  white-space: normal;
+  box-sizing: border-box;
 }
 
 /* Quiet bottom whisper dock so surfaces are reachable by voice OR pointer without cluttering coral */
 .os1-dock {
   position: fixed;
-  bottom: 20px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -183,18 +259,27 @@ input::placeholder { color: var(--on-coral-faint); }
   gap: 6px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(56, 20, 10, 0.22);
-  border: 1px solid rgba(255, 253, 249, 0.16);
+  background: rgba(56, 20, 10, 0.38);
+  border: 1px solid rgba(255, 253, 249, 0.20);
   backdrop-filter: blur(16px);
-  opacity: 0.56;
+  -webkit-backdrop-filter: blur(16px);
+  opacity: 0.82;
   transition: opacity 240ms var(--ease-soft), background 240ms var(--ease-soft);
   z-index: 30;
+  max-width: calc(100vw - 20px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.os1-dock::-webkit-scrollbar {
+  display: none;
 }
 .os1-dock:hover {
   opacity: 1;
-  background: rgba(56, 20, 10, 0.36);
+  background: rgba(56, 20, 10, 0.48);
 }
 .os1-dock button {
+  flex-shrink: 0;
   padding: 5px 12px;
   border-radius: 999px;
   border: none;
@@ -209,6 +294,77 @@ input::placeholder { color: var(--on-coral-faint); }
 }
 .os1-dock button:hover { color: var(--paper); background: rgba(255, 253, 249, 0.14); }
 .os1-dock button[data-active="true"] { background: rgba(255, 253, 249, 0.22); color: var(--paper); }
+
+@media (max-width: 640px) {
+  .os1-dock {
+    bottom: 8px;
+    gap: 4px;
+    padding: 4px 6px;
+  }
+  .os1-dock button {
+    padding: 4px 9px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* Unified responsive container for spatial surfaces (Inbox, Canvas, Swarm, etc.) */
+.os1-surface-container {
+  position: fixed;
+  inset: 0;
+  padding: clamp(20px, 4.5vh, 52px) clamp(16px, 4vw, 56px) clamp(72px, 10vh, 96px);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(14px, 2.5vh, 24px);
+  max-width: 1220px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.os1-surface-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.os1-surface-title {
+  margin: 6px 0 0;
+  font: 200 clamp(24px, 5vw, 40px)/1.1 var(--font-sans);
+}
+
+/* Say chips flex wrapper & chip styles */
+.os1-say-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.os1-say-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: clamp(6px, 1.8vw, 9px) clamp(10px, 2.8vw, 18px);
+  border-radius: 999px;
+  font: italic 300 clamp(13px, 3.4vw, 17px) var(--font-sans);
+  cursor: pointer;
+  max-width: 100%;
+  text-align: left;
+  transition: transform 140ms ease, background 140ms ease;
+  white-space: normal;
+}
+.os1-say-chip:hover {
+  transform: translateY(-1px);
+}
+.os1-say-chip:active {
+  transform: scale(0.98);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .os1-fade, .os1-surface { animation: none; }

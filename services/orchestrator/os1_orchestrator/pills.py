@@ -30,7 +30,10 @@ GLOBAL_PHRASES: list[dict[str, Any]] = [
     {"phrase": "show me what you remember", "aliases": ["open my memories", "show my memories", "show memory"], "target": "surface", "action": "memory"},
     {"phrase": "show connectors", "aliases": ["show my apps", "open connectors", "what are you connected to"], "target": "surface", "action": "connectors"},
     {"phrase": "change your voice", "aliases": ["open voice settings", "show voices", "voice settings"], "target": "surface", "action": "voice_picker"},
-    {"phrase": "show everything running", "aliases": ["show swarm", "what are you working on", "show background tasks"], "target": "surface", "action": "swarm"},
+    {"phrase": "show everything running", "aliases": ["show swarm", "show background tasks", "open swarm"], "target": "surface", "action": "swarm"},
+    {"phrase": "stop that", "aliases": ["stop it", "stop background task", "cancel task", "stop task"], "target": "swarm", "action": "stop_latest"},
+    {"phrase": "how is it going", "aliases": ["how's it going", "how's the task going", "how is the background task going"], "target": "swarm", "action": "status_active"},
+    {"phrase": "clear finished tasks", "aliases": ["clear done", "dismiss finished tasks", "clear swarm"], "target": "swarm", "action": "clear_done"},
     {"phrase": "go home", "aliases": ["back to home", "clear the screen", "just talk"], "target": "surface", "action": "conversation"},
     {"phrase": "show desktop", "aliases": ["open home", "show home"], "target": "surface", "action": "home"},
     {"phrase": "a little warmer", "aliases": ["sound warmer", "warmer voice"], "target": "voice_tweak", "action": "warmer"},
@@ -38,6 +41,10 @@ GLOBAL_PHRASES: list[dict[str, Any]] = [
     {"phrase": "a little faster", "aliases": ["speed up", "speak faster"], "target": "voice_tweak", "action": "faster"},
     {"phrase": "switch to voice two", "aliases": ["use bright voice", "try the brighter voice"], "target": "voice_tweak", "action": "voice_2_bright"},
     {"phrase": "switch to voice one", "aliases": ["use warm voice", "back to the warm voice"], "target": "voice_tweak", "action": "voice_1_warm"},
+    {"phrase": "trash the newsletters", "aliases": ["trash newsletters", "delete newsletters", "clean newsletters", "clear newsletters", "trash junk"], "target": "inbox", "action": "trash_newsletters"},
+    {"phrase": "play it", "aliases": ["play", "play audio sketch", "play the piano", "play music", "play song", "listen to it"], "target": "canvas", "action": "play"},
+    {"phrase": "show canvas", "aliases": ["open canvas", "show made just now", "made just now", "show cards"], "target": "surface", "action": "canvas"},
+    {"phrase": "read mom's email", "aliases": ["open mom's email", "read mom", "mom's email"], "target": "inbox", "action": "open", "payload": {"number": 1}},
 ]
 
 NUMBER_WORDS = {
@@ -155,7 +162,7 @@ def match_pill(
                     target=entry["target"],
                     action=entry["action"],
                     confidence=0.95 if (raw == nc or stripped == nc) else 0.85,
-                    payload={},
+                    payload=dict(entry.get("payload") or {}),
                 )
 
     return None

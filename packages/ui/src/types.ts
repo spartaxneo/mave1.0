@@ -2,12 +2,14 @@
 
 export type Phase =
   | "preflight"
+  | "boot"
   | "operator_welcome"
   | "operator_q1"
   | "operator_q1_hesitance"
   | "operator_q2"
   | "operator_q3"
   | "initiating"
+  | "naming"
   | "samantha_first_meeting"
   | "active"
   | "asleep";
@@ -31,7 +33,13 @@ export type Surface = "startup" | "preflight" | "boot" | "setup" | "waking" | "n
 export interface WorkItem {
   id: string;
   label: string;
-  status: string;
+  status: "running" | "waiting" | "done" | "cancelled" | "failed" | string;
+  progress?: number;
+  stage?: string;
+  result?: string;
+  logs?: string[];
+  created_at?: number;
+  updated_at?: number;
 }
 
 export interface MoodState {
@@ -104,6 +112,8 @@ export type Os1Card =
       bars?: number[];
       actions: SpeakableAction[];
     };
+
+export type AudioSketchCard = Extract<Os1Card, { kind: "AudioSketchCard" }>;
 
 export interface CanvasState {
   title: string;
@@ -238,8 +248,17 @@ export interface Os1State {
   chips: string[];
   work: WorkItem[];
   voice: string;
+  agentName?: string;
   agentLine: string;
   userLine: string;
+  speechWarning?: string;
+  installerStatus?: string;
+  installerPercent?: number;
+  installerMessage?: string;
+  installerComponent?: string;
+  installerComponentLabel?: string;
+  installerReady?: boolean;
+  storageDir?: string;
 }
 
 export interface Os1Config {

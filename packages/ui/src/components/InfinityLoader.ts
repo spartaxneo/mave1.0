@@ -555,7 +555,9 @@ export class InfinityLoader {
   resize(): void {
     if (this.destroyed) return;
     const size =
-      this.fixedSize ?? Math.max(420, Math.min(760, Math.min(window.innerWidth, window.innerHeight) * 0.88));
+      this.fixedSize
+        ? Math.min(this.fixedSize, Math.floor(window.innerWidth * 0.9))
+        : Math.min(760, Math.max(260, Math.floor(Math.min(window.innerWidth * 0.92, window.innerHeight * 0.85))));
     this.canvas.style.width = `${size}px`;
     this.canvas.style.height = `${size}px`;
     this.renderer.setSize(size, size, false);
